@@ -3,7 +3,7 @@
 client_id = "ac45b68fad2c2a395bc9b57cb191df60"
 name = "65"
 handle = "65-1"
-application_url = "https://arise-aw-science-sparc.trycloudflare.com"
+application_url = "https://genetics-globe-pavilion-inspiration.trycloudflare.com"
 embedded = true
 
 [build]
@@ -27,9 +27,9 @@ scopes = "write_products"
 
 [auth]
 redirect_urls = [
-  "https://arise-aw-science-sparc.trycloudflare.com/auth/callback",
-  "https://arise-aw-science-sparc.trycloudflare.com/auth/shopify/callback",
-  "https://arise-aw-science-sparc.trycloudflare.com/api/auth/callback"
+  "https://genetics-globe-pavilion-inspiration.trycloudflare.com/auth/callback",
+  "https://genetics-globe-pavilion-inspiration.trycloudflare.com/auth/shopify/callback",
+  "https://genetics-globe-pavilion-inspiration.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
