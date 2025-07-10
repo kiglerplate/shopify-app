@@ -178,11 +178,11 @@ const { shopId } = useLoaderData<typeof loader>();
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
+      {/* <TitleBar title="Remix app template">
         <button variant="primary" onClick={generateProduct}>
           Generate a product
         </button>
-      </TitleBar>
+      </TitleBar> */}
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
