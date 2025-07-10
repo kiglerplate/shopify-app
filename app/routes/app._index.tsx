@@ -47,7 +47,9 @@ const handleGoogleSignIn = async (shopId: string) => {
         platform: "shopify",
         instances: [instanceId],
         createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString()
+        lastLogin: new Date().toISOString(),
+        isReady: false,
+        requestNewQR: false
       });
     } else {
       const userData = existing.data();
@@ -57,7 +59,9 @@ const handleGoogleSignIn = async (shopId: string) => {
          instances: arrayUnion(instanceId),
         lastLogin: new Date().toISOString(),
         displayName: user.displayName,
-        photoURL: user.photoURL
+        photoURL: user.photoURL,   
+        isReady: false,
+        requestNewQR: false
       });
     }
 
