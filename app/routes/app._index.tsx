@@ -28,7 +28,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 const handleGoogleSignIn = async (shopId: string) => {
-  try {
+    try {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
@@ -36,13 +36,16 @@ const handleGoogleSignIn = async (shopId: string) => {
     const userDocRef = doc(db, "users", user.email);
     const existing = await getDoc(userDocRef);
 
+    const instanceId = shopId;
+
+
     if (!existing.exists()) {
       await setDoc(userDocRef, {
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
         platform: "shopify",
-        shopId: shopId,
+        instances: [instanceId],
         createdAt: new Date().toISOString(),
         lastLogin: new Date().toISOString()
       });
@@ -51,6 +54,7 @@ const handleGoogleSignIn = async (shopId: string) => {
       await setDoc(userDocRef, {
         ...userData,
         shopId: shopId,
+         instances: arrayUnion(instanceId),
         lastLogin: new Date().toISOString(),
         displayName: user.displayName,
         photoURL: user.photoURL
@@ -68,6 +72,7 @@ const handleGoogleSignIn = async (shopId: string) => {
         phone: "",
         isActive: false,
         platform: "shopify",
+        instances: arrayUnion(instanceId),
         createdAt: new Date().toISOString(),
       });
     }
@@ -196,3 +201,7 @@ const { shopId } = useLoaderData<typeof loader>();
     </Page>
   );
 }
+function arrayUnion(instanceId: string) {
+  throw new Error("Function not implemented.");
+}
+
