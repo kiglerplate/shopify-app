@@ -1,3 +1,4 @@
+// app/shopify.server.ts
 import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
@@ -19,6 +20,13 @@ const shopify = shopifyApp({
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     removeRest: true,
+  },
+  hooks: {
+    afterAuth: async ({ session }) => {
+      // בלי context — רק session
+      const registrations = await shopify.registerWebhooks({ session });
+      console.log("✅ registered webhooks:", registrations);
+    },
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }

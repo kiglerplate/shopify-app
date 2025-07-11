@@ -3,8 +3,17 @@
 client_id = "ac45b68fad2c2a395bc9b57cb191df60"
 name = "65"
 handle = "65-1"
-application_url = "https://mouse-tear-curve-peripheral.trycloudflare.com"
+application_url = "https://shopify-app-7tmy.onrender.com"
 embedded = true
+
+  # מנוי ל-Compliance Webhooks
+[[webhooks.subscriptions]]
+  compliance_topics = [
+    "customers/data_request",
+    "customers/redact",
+    "shop/redact"
+  ]
+uri = "/webhooks/compliance"
 
 [build]
 include_config_on_deploy = true
@@ -14,27 +23,27 @@ automatically_update_urls_on_dev = true
 api_version = "2025-04"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
+  topics = ["app/uninstalled"]
   uri = "/webhooks/app/uninstalled"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/scopes_update" ]
+  topics = ["app/scopes_update"]
   uri = "/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
-  topics = [ "orders/paid" ]
+  topics = ["orders/paid"]
   uri = "/webhooks/orders/paid"
 
   [[webhooks.subscriptions]]
-  topics = [ "orders/fulfilled" ]
+  topics = ["orders/fulfilled"]
   uri = "/webhooks/orders/fulfilled"
 
   [[webhooks.subscriptions]]
-  topics = [ "carts/create" ]
+  topics = ["carts/create"]
   uri = "/webhooks/carts/create"
 
   [[webhooks.subscriptions]]
-  topics = [ "checkouts/create" ]
+  topics = ["checkouts/create"]
   uri = "/webhooks/checkouts/create"
 
 [access_scopes]
@@ -43,9 +52,9 @@ scopes = "write_products, read_orders, read_checkouts, read_customers"
 
 [auth]
 redirect_urls = [
-  "https://mouse-tear-curve-peripheral.trycloudflare.com/auth/callback",
-  "https://mouse-tear-curve-peripheral.trycloudflare.com/auth/shopify/callback",
-  "https://mouse-tear-curve-peripheral.trycloudflare.com/api/auth/callback"
+  "https://shopify-app-7tmy.onrender.com/auth/callback",
+  "https://shopify-app-7tmy.onrender.com/auth/shopify/callback",
+  "https://shopify-app-7tmy.onrender.com/api/auth/callback"
 ]
 
 [pos]
