@@ -42,17 +42,19 @@ function extractCartDetails(cartData: any) {
   const shippingAddress = cartData.shipping_address || {};
   const customer = cartData.customer || {};
 
-  // טלפון - עדיפות: כתובת משלוח > כתובת חיוב > לקוח
   const phone =
-    shippingAddress.phone || billingAddress.phone || customer.phone || null;
+    shippingAddress.phone ||
+    billingAddress.phone ||
+    customer.phone ||
+    cartData.phone ||
+    null;
 
   const items = (cartData.line_items || []).map((item: any) => ({
     name: item.title || item.name || "",
     sku: item.sku || item.variant_id?.toString() || "",
     quantity: item.quantity || 1,
     price: parseFloat(item.price || "0"),
-    weight: item.grams ? item.grams / 1000 : null, // גרמים לק"ג
-    image: null, // ב-Shopify אין לינק לתמונה ישירות מפריטי עגלה
+    weight: item.grams ? item.grams / 1000 : null,
     variant_id: item.variant_id || null,
     product_id: item.product_id || null,
   }));
@@ -128,7 +130,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cartData = extractCartDetails(payload);
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
 
-    // 1. שמירת עגלה נטושה
+    // 1. שמירת עגלה נטושה בקולקציה pendingCheckouts (להתאמה עם השירות הקיים)
+    await settingsRef
+      .collection("pendingCheckouts")
+      .doc(String(payload.id))
+      .set({
+        status: "pending", // חשוב עבור השאילתה הקיימת
+        phone: cartData.customer.phone || "",
+        email: cartData.customer.email || "",
+        cartToken: cartData.cartToken,
+        customerName: cartData.customer.name,
+        items: cartData.items.map(
+          (item: { name: any; quantity: any; price: any }) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+          }),
+        ),
+        totalPrice: cartData.totals.total,
+        abandoned_checkout_url: cartData.abandoned_checkout_url,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+    // 2. שמירת עגלה נטושה בקולקציה order_abandoned (לשמירת כל הנתונים המלאים)
     await settingsRef
       .collection("order_abandoned")
       .doc(String(payload.id))
@@ -137,7 +162,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         createdAt: FieldValue.serverTimestamp(),
       });
 
-    // 2. שמירת/עדכון לקוח נטוש
+    // 3. שמירת/עדכון לקוח נטוש
     const formattedPhone = cartData.customer.phone
       ? formatIsraeliPhoneNumber(cartData.customer.phone)
       : null;
