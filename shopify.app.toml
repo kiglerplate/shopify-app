@@ -1,60 +1,59 @@
-client_id       = "ac45b68fad2c2a395bc9b57cb191df60"
-name            = "WarmLight"
-handle          = "65-1"
-application_url = "https://warmlight.xyz"
-embedded        = true
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "ac45b68fad2c2a395bc9b57cb191df60"
+name = "WarmLight"
+handle = "65-1"
+application_url = "https://murder-presentations-ate-prayers.trycloudflare.com"
+embedded = true
 
 [build]
-include_config_on_deploy    = true
+include_config_on_deploy = true
 automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2025-04"
 
-[[webhooks.subscriptions]]
-compliance_topics = [
-  "customers/data_request",
-  "customers/redact",
-  "shop/redact"
-]
-uri = "/webhooks/compliance"
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/webhooks/compliance"
 
-[[webhooks.subscriptions]]
-topics = ["app/uninstalled"]
-uri    = "/webhooks/app/uninstalled"
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
 
-[[webhooks.subscriptions]]
-topics = ["app/scopes_update"]
-uri    = "/webhooks/app/scopes_update"
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
 
-[[webhooks.subscriptions]]
-topics = ["orders/paid"]
-uri    = "/webhooks/orders/paid"
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders/paid"
 
-[[webhooks.subscriptions]]
-topics = ["orders/create"]
-uri    = "/webhooks/orders/create"
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
 
-[[webhooks.subscriptions]]
-topics = ["orders/fulfilled"]
-uri    = "/webhooks/orders/fulfilled"
+  [[webhooks.subscriptions]]
+  topics = [ "orders/fulfilled" ]
+  uri = "/webhooks/orders/fulfilled"
 
-[[webhooks.subscriptions]]
-topics = ["carts/create"]
-uri    = "/webhooks/carts/create"
+  [[webhooks.subscriptions]]
+  topics = [ "carts/create" ]
+  uri = "/webhooks/carts/create"
 
-[[webhooks.subscriptions]]
-topics = ["checkouts/create"]
-uri    = "/webhooks/checkouts/create"
+  [[webhooks.subscriptions]]
+  topics = [ "checkouts/create" ]
+  uri = "/webhooks/checkouts/create"
 
 [access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products, read_orders, read_checkouts, read_customers"
 
 [auth]
 redirect_urls = [
-  "https://warmlight.xyz/auth/callback",
-  "https://warmlight.xyz/auth/shopify/callback",
-  "https://warmlight.xyz/api/auth/callback"
+  "https://murder-presentations-ate-prayers.trycloudflare.com/auth/callback",
+  "https://murder-presentations-ate-prayers.trycloudflare.com/auth/shopify/callback",
+  "https://murder-presentations-ate-prayers.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
