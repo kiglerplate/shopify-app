@@ -18,9 +18,14 @@ const serviceAccount = {
     "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40wixapp-8efb6.iam.gserviceaccount.com",
   universe_domain: "googleapis.com",
 };
-// ודא שאין כפילויות אתחול אם הקובץ רץ פעמיים
-const app = getApps().length === 0 ? initializeApp({ credential: cert(serviceAccount) }) : undefined;
+// Initialize only once
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
+  });
+}
 
+// Export the Firestore database and the Admin SDK reference
+export const db = getFirestore();
 export const adminAuth = getAuth();
-export const firestore = getFirestore();
-
+export { admin };

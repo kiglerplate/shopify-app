@@ -1,216 +1,158 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
-import { auth, db } from "../firebaseClient";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { useLoaderData } from "@remix-run/react";
-import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
-import {
-  Page,
-  Layout,
-  Text,
-  Card,
-  Button,
-  BlockStack,
-  Box,
-  List,
-  Link,
-  InlineStack,
-} from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+// app/routes/webhooks/orders.create.tsx
+import { Buffer } from "buffer";
+import type { ActionFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import crypto from "crypto";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  return { shopId: session.shop };
-};
+// ייבוא של ה־db ושל admin (FieldValue) מתוך firebase.server.js
+import { db, admin } from "./../firebase.server";
+
+const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
 
 function normalizeId(raw: string): string {
-  return (
-    raw
-      .toLowerCase()
-      // כל רצף של תווים שאינם a–z או 0–9 יהפוך ל־'-'
-      .replace(/[^a-z0-9]+/g, "-")
-      // מסיר '-' מיותר בהתחלה ובסוף
-      .replace(/^-+|-+$/g, "")
-  );
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-const handleGoogleSignIn = async (shopId: string) => {
-  try {
-    const instanceId = normalizeId(shopId); // => "sisfore-myshopify-com"
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user!;
-    if (!user.email) throw new Error("User email is null");
+/**
+ * מחלץ את פרטי ההזמנה למבנה שאתה צריך
+ */
+function extractShippingDetails(orderData: any) {
+  const shippingInfo = orderData.shippingInfo || {};
+  const logistics = shippingInfo.logistics || {};
+  const shippingCost = shippingInfo.cost || {};
+  const destination = logistics.shippingDestination || {};
+  const pickup = logistics.pickupDetails || {};
 
-    // users collection – נשמור כרגיל תחת המייל שלו
-    const userDocRef = doc(db, "users", user.email);
-    const existing = await getDoc(userDocRef);
+  const isPickup = !!pickup.address;
+  const isDirectShipping = !!destination.address;
+  const address = isPickup ? pickup.address : destination.address;
+  const contact = isPickup ? pickup.contactDetails : destination.contactDetails;
+  const lineItems = orderData.line_items || []; // שים לב: בווב־הוק השדה נקרא line_items
 
-    if (!existing.exists()) {
-      await setDoc(userDocRef, {
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        platform: "shopify",
-        instances: [instanceId],
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
-        isReady: false,
-        requestNewQR: false,
-      });
-    } else {
-      await updateDoc(userDocRef, {
-        instances: arrayUnion(instanceId),
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        lastLogin: new Date().toISOString(),
-        isReady: false,
-        requestNewQR: false,
-      });
-    }
+  const items = lineItems.map((item: any) => ({
+    name: item.name || "",
+    sku: item.sku || "",
+    quantity: item.quantity || 1,
+    price: parseFloat(item.price || "0"),
+    weight: item.grams ?? null,
+    image: item.image ? item.image.src : null,
+  }));
 
-    // whatsapp-settings collection – תוודא שמזהה המסמך הוא instanceId, לא shopId
-    const whatsappSettingsRef = doc(db, "whatsapp-settings", instanceId);
-    const whatsappSettingsSnap = await getDoc(whatsappSettingsRef);
-
-    if (!whatsappSettingsSnap.exists()) {
-      await setDoc(whatsappSettingsRef, {
-        shopDomain: shopId, // אם חשוב לשמור גם את הדומיין המקורי
-        userId: user.uid,
-        email: user.email,
-        phone: "",
-        isActive: false,
-        platform: "shopify",
-        instances: [instanceId],
-        createdAt: new Date().toISOString(),
-      });
-    } else {
-      await updateDoc(whatsappSettingsRef, {
-        instances: arrayUnion(instanceId),
-      });
-    }
-
-    alert(`🎉 התחברת בהצלחה: ${user.displayName} לחנות ${instanceId}`);
-  } catch (error) {
-    console.error("❌ שגיאה בהתחברות:", error);
-    alert("שגיאה בהתחברות עם Google");
-  }
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
-
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
-
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-
-  const variantResponseJson = await variantResponse.json();
+  const skuList = items.map((i: { sku: any }) => i.sku);
+  const city = address?.city || null;
+  const totalAmount = parseFloat(orderData.total_price || "0");
 
   return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
+    matchFields: {
+      skuList,
+      city,
+      totalAmount,
+    },
+    orderId: orderData.id,
+    orderNumber: orderData.order_number,
+    platform: "SHOPIFY",
+    fulfillmentStatus: orderData.fulfillment_status || "UNKNOWN",
+    shippingType: isPickup
+      ? "PICKUP"
+      : isDirectShipping
+        ? "DELIVERY"
+        : "UNKNOWN",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+
+    shipping: {
+      title: shippingInfo.title || null,
+      instructions: logistics.instructions || null,
+      deliveryTime: logistics.deliveryTime || null,
+      cost: {
+        amount: parseFloat(shippingCost?.price?.amount || "0"),
+        formatted: shippingCost?.price?.formattedAmount || "",
+        tax: parseFloat(shippingCost?.taxDetails?.totalTax?.amount || "0"),
+        taxRate: shippingCost?.taxDetails?.taxRate || "0",
+      },
+      address: {
+        street: address?.address1 || null,
+        number: address?.address_number || null,
+        apt: address?.address2 || null,
+        city: address?.city || null,
+        country: address?.country || null,
+        postalCode: address?.zip || null,
+        addressLine2: address?.address2 || null,
+      },
+      recipient: {
+        name: `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim(),
+        phone: contact?.phone || null,
+      },
+    },
+
+    buyer: {
+      email: orderData.email || null,
+      contactId: orderData.customer?.id || null,
+      name: `${orderData.billing_address?.first_name || ""} ${orderData.billing_address?.last_name || ""}`.trim(),
+    },
+
+    items,
+
+    total: {
+      subtotal: parseFloat(orderData.subtotal_price || "0"),
+      shipping: parseFloat(orderData.total_shipping_price || "0"),
+      total: parseFloat(orderData.total_price || "0"),
+    },
   };
-};
-
-export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-  const { shopId } = useLoaderData<typeof loader>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
-
-  useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
-    }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
-
-  return (
-    <Page>
-      {/* <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
-        </button>
-      </TitleBar> */}
-      <BlockStack gap="500">
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="500">
-                <Button
-                  onClick={() => handleGoogleSignIn(shopId)}
-                  variant="secondary"
-                >
-                  Sign in with Google11
-                </Button>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
-    </Page>
-  );
 }
+
+export const action: ActionFunction = async ({ request }) => {
+  // 1. אימות HMAC
+  const rawBody = await request.clone().text();
+  const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
+  const computedHmac = crypto
+    .createHmac("sha256", SHOPIFY_SECRET)
+    .update(rawBody, "utf8")
+    .digest("base64");
+
+  const hmacBuf = Buffer.from(shopifyHmac, "base64");
+  const computedBuf = Buffer.from(computedHmac, "base64");
+  let valid = false;
+  if (hmacBuf.length === computedBuf.length) {
+    try {
+      valid = crypto.timingSafeEqual(hmacBuf, computedBuf);
+    } catch {
+      valid = false;
+    }
+  }
+  if (!valid) {
+    console.warn("❌ invalid HMAC", { computedHmac, shopifyHmac });
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  // 2. פרסור ה־payload ויצירת instanceId
+  const payload = JSON.parse(rawBody);
+  const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
+  const instanceId = normalizeId(shopDomain);
+
+  // 3. חילוץ הנתונים למבנה הרצוי
+  const shippingData = extractShippingDetails(payload);
+
+  // 4. שמירה ל־Firestore
+  const collectionRef = db
+    .collection("whatsapp-settings")
+    .doc(instanceId)
+    .collection("shipping-records");
+
+  try {
+    await collectionRef
+      .doc(String(payload.id))
+      .set(shippingData, { merge: true });
+
+    console.log(
+      `✅ Shipping record for order ${payload.id} saved under ${instanceId}`,
+    );
+  } catch (e) {
+    console.error("🔥 Error saving shipping data:", e);
+    return new Response("Error writing to database", { status: 500 });
+  }
+
+  return json({}, { status: 200 });
+};
