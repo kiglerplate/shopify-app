@@ -5,7 +5,7 @@ import { json } from "@remix-run/node";
 import crypto from "crypto";
 
 // ייבוא של ה־db ושל admin (FieldValue) מתוך firebase.server.js
-import { db, admin } from "./../firebase.server";
+import { db, FieldValue } from "./../firebase.server";
 
 const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
 
@@ -60,7 +60,7 @@ function extractShippingDetails(orderData: any) {
       : isDirectShipping
         ? "DELIVERY"
         : "UNKNOWN",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
 
     shipping: {
       title: shippingInfo.title || null,

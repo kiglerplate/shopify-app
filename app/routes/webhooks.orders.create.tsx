@@ -16,91 +16,71 @@ function normalizeId(raw: string): string {
 }
 
 function extractShippingDetails(orderData: any) {
-  console.log("🔍 extractShippingDetails input:", orderData);
-  const shippingInfo = orderData.shippingInfo || {};
-  const logistics = shippingInfo.logistics || {};
-  const shippingCost = shippingInfo.cost || {};
-  const destination = logistics.shippingDestination || {};
-  const pickup = logistics.pickupDetails || {};
+  console.log("🔍 raw Shopify order:", orderData);
 
-  const isPickup = !!pickup.address;
-  const isDirectShipping = !!destination.address;
-  const address = isPickup ? pickup.address : destination.address;
-  const contact = isPickup ? pickup.contactDetails : destination.contactDetails;
-  const lineItems = orderData.line_items || [];
+  // 1. הכתובת: השתמש ב־shipping_address אם קיים, אחרת ב־billing_address
+  const addressObj =
+    orderData.shipping_address || orderData.billing_address || {};
+  console.log("🏙 resolved address:", addressObj);
 
-  const items = lineItems.map((item: any) => ({
-    name: item.name || "",
-    sku: item.sku || "",
-    quantity: item.quantity || 1,
-    price: parseFloat(item.price || "0"),
-    weight: item.grams ?? null,
-    image: item.image?.src || null,
+  // 2. עלות משלוח כוללת (ILS)
+  const shippingCostAmount = parseFloat(
+    orderData.current_shipping_price_set?.shop_money?.amount || "0",
+  );
+
+  // 3. שורות המשלוח (יתמלאו אם יש)
+  const shippingLines = (orderData.shipping_lines || []).map((l: any) => ({
+    code: l.code,
+    price: parseFloat(l.price),
   }));
+  console.log("🚚 shipping lines:", shippingLines);
 
+  // 4. פרטי הפריטים
+  const items = (orderData.line_items || []).map((it: any) => ({
+    name: it.name,
+    sku: it.sku,
+    quantity: it.quantity,
+    price: parseFloat(it.price),
+    weight: it.grams,
+    image: it.image?.src || null,
+  }));
   console.log("📦 items:", items);
-  console.log("🏙 address:", address);
 
-  const skuList = items.map((i: { sku: any }) => i.sku);
-  const city = address?.city || null;
-  const totalAmount = parseFloat(orderData.total_price || "0");
-
-  const result = {
-    matchFields: { skuList, city, totalAmount },
+  return {
     orderId: orderData.id,
     orderNumber: orderData.order_number,
-    platform: "SHOPIFY",
-    fulfillmentStatus: orderData.fulfillment_status || "UNKNOWN",
-    shippingType: isPickup
-      ? "PICKUP"
-      : isDirectShipping
-        ? "DELIVERY"
-        : "UNKNOWN",
     createdAt: FieldValue.serverTimestamp(),
 
     shipping: {
-      title: shippingInfo.title || null,
-      instructions: logistics.instructions || null,
-      deliveryTime: logistics.deliveryTime || null,
       cost: {
-        amount: parseFloat(shippingCost?.price?.amount || "0"),
-        formatted: shippingCost?.price?.formattedAmount || "",
-        tax: parseFloat(shippingCost?.taxDetails?.totalTax?.amount || "0"),
-        taxRate: shippingCost?.taxDetails?.taxRate || "0",
+        amount: shippingCostAmount,
       },
+      lines: shippingLines,
       address: {
-        street: address?.address1 || null,
-        number: address?.address_number || null,
-        apt: address?.address2 || null,
-        city: address?.city || null,
-        country: address?.country || null,
-        postalCode: address?.zip || null,
+        street: addressObj.address1 || null,
+        number: addressObj.address2 || null,
+        city: addressObj.city || null,
+        country: addressObj.country || null,
+        postalCode: addressObj.zip || null,
       },
       recipient: {
-        name: `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim(),
-        phone: contact?.phone || null,
+        name:
+          `${addressObj.first_name || ""} ${addressObj.last_name || ""}`.trim() ||
+          addressObj.name ||
+          null,
+        phone: addressObj.phone || null,
       },
-    },
-
-    buyer: {
-      email: orderData.email || null,
-      contactId: orderData.customer?.id || null,
-      name: `${orderData.billing_address?.first_name || ""} ${orderData.billing_address?.last_name || ""}`.trim(),
     },
 
     items,
 
     total: {
       subtotal: parseFloat(orderData.subtotal_price || "0"),
-      shipping: parseFloat(orderData.total_shipping_price || "0"),
+      shipping: shippingCostAmount,
       total: parseFloat(orderData.total_price || "0"),
     },
   };
-
-  console.log("✅ extractShippingDetails output:", result);
-  return result;
 }
-
 export const action: ActionFunction = async ({ request }) => {
   console.log("🚀 orders.create webhook received");
 
