@@ -3,7 +3,7 @@
 client_id = "ac45b68fad2c2a395bc9b57cb191df60"
 name = "WarmLight"
 handle = "65-1"
-application_url = "https://murder-presentations-ate-prayers.trycloudflare.com"
+application_url = "https://concentrate-reduce-scoop-spears.trycloudflare.com"
 embedded = true
 
 [build]
@@ -51,9 +51,9 @@ scopes = "write_products, read_orders, read_checkouts, read_customers"
 
 [auth]
 redirect_urls = [
-  "https://murder-presentations-ate-prayers.trycloudflare.com/auth/callback",
-  "https://murder-presentations-ate-prayers.trycloudflare.com/auth/shopify/callback",
-  "https://murder-presentations-ate-prayers.trycloudflare.com/api/auth/callback"
+  "https://concentrate-reduce-scoop-spears.trycloudflare.com/auth/callback",
+  "https://concentrate-reduce-scoop-spears.trycloudflare.com/auth/shopify/callback",
+  "https://concentrate-reduce-scoop-spears.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
