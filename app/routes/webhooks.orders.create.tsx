@@ -169,6 +169,16 @@ function extractShippingDetails(orderData: {
     },
   };
 }
+
+function formatIsraeliPhoneNumber(phoneNumber: string) {
+  if (!phoneNumber) return null;
+
+  let digits = phoneNumber.replace(/\D/g, "");
+  if (digits.startsWith("972")) return digits;
+  if (digits.startsWith("0")) return "972" + digits.slice(1);
+  return null;
+}
+
 export const action: ActionFunction = async ({ request }) => {
   console.log("🚀 orders.create webhook received");
 
@@ -207,12 +217,10 @@ export const action: ActionFunction = async ({ request }) => {
   const shippingData = extractShippingDetails(payload);
 
   // 4. שמירה ל־Firestore
-  const collectionRef = db
-    .collection("whatsapp-settings")
-    .doc(instanceId)
-    .collection("shipping-records");
+  const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
+  const collectionRef = settingsRef.collection("shipping-records");
   console.log(
-    "🗂 will write to:",
+    "🗂 will write shipping record to:",
     collectionRef.path,
     "/doc:",
     String(payload.id),
@@ -222,13 +230,49 @@ export const action: ActionFunction = async ({ request }) => {
     await collectionRef
       .doc(String(payload.id))
       .set(shippingData, { merge: true });
-
     console.log(
       `✅ Shipping record for order ${payload.id} saved under ${instanceId}`,
     );
   } catch (e) {
     console.error("🔥 Error saving shipping data:", e);
     return new Response("Error writing to database", { status: 500 });
+  }
+
+  // 5. בדיקת הגדרות ושליחת הודעת אישור אם צריך
+  try {
+    const settingsSnap = await settingsRef.get();
+    const settings = settingsSnap.data();
+    if (settings?.order_approved && settings?.order_approved_message) {
+      console.log("✅ order_approved is enabled, preparing message");
+
+      // קבלת טלפון מה־payload
+      const rawPhone = payload.phone || payload.billing_address?.phone;
+      const formattedPhone = formatIsraeliPhoneNumber(rawPhone);
+      if (!formattedPhone) {
+        console.error("❌ Invalid phone format:", rawPhone);
+      } else {
+        let approvedMessage = settings.order_approved_message;
+        if (settings.include_order_number && payload.order_number) {
+          approvedMessage += `\n\nמספר ההזמנה שלך הוא: ${payload.order_number}`;
+        }
+
+        // שמירה לתיקיית transactions/incomingOrders/records
+        const txRef = db
+          .collection("transactions")
+          .doc("incomingOrders")
+          .collection("records");
+        await txRef.add({
+          clientId: instanceId,
+          number: formattedPhone,
+          message: approvedMessage,
+          transactionType: "order",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        console.log(`✅ Order notification queued for ${formattedPhone}`);
+      }
+    }
+  } catch (err) {
+    console.error("🔥 Error handling order_approved logic:", err);
   }
 
   return json({}, { status: 200 });
