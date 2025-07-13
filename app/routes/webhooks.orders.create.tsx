@@ -15,38 +15,32 @@ function normalizeId(raw: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+type Address = {
+  address1?: string;
+  address2?: string;
+  city?: string;
+  country?: string;
+  country_name?: string;
+  zip?: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  phone?: string;
+};
+
 function extractShippingDetails(orderData: {
-  shipping_address: {
-    city?: string;
-    address1?: string;
-    address2?: string;
-    country?: string;
-    zip?: string;
-    first_name?: string;
-    last_name?: string;
-    name?: string;
-    phone?: string;
-    [key: string]: any;
-  };
-  billing_address: {
-    first_name?: string;
-    last_name?: string;
-    name?: string;
-    [key: string]: any;
-  };
-  customer: {
-    id?: string;
+  shipping_address?: Address;
+  billing_address?: Address;
+  customer?: {
     email?: string;
+    id?: any;
+    first_name?: string;
+    last_name?: string;
     name?: string;
-    [key: string]: any;
   };
   line_items: any;
   total_price: any;
-  shipping_line: {
-    price?: string;
-    title?: string;
-    [key: string]: any;
-  };
+  shipping_lines: { price?: string | number; title?: string }[];
   id: any;
   order_number: any;
   name: string;
@@ -54,11 +48,13 @@ function extractShippingDetails(orderData: {
   note: any;
   currency: any;
   total_tax: any;
+  tax_lines: { rate: { toString: () => any } }[];
   email: any;
   subtotal_price: any;
 }) {
-  // 1. מידע משלוח - Shopify
-  const shippingAddress = orderData.shipping_address || {};
+  // 1. מידע משלוח - Shopify (שימוש בכתובת חיוב אם אין כתובת משלוח)
+  const shippingAddress =
+    orderData.shipping_address || orderData.billing_address || {};
   const billingAddress = orderData.billing_address || {};
   const customer = orderData.customer || {};
 
@@ -68,33 +64,43 @@ function extractShippingDetails(orderData: {
       name: any;
       title: any;
       sku: any;
+      variant_id: { toString: () => any };
       quantity: any;
       price: any;
       grams: number;
       image: { src: any };
     }) => ({
       name: item.name || item.title || "",
-      sku: item.sku || "",
+      sku: item.sku || item.variant_id?.toString() || "", // שימוש ב-variant_id אם אין SKU
       quantity: item.quantity || 1,
       price: parseFloat(item.price || "0"),
-      weight: item.grams ? item.grams / 1000 : null, // ממיר גרמים לק"ג
+      weight: item.grams ? item.grams / 1000 : null, // המרה מגרמים לק"ג
       image: item.image?.src || null,
     }),
   );
 
   // 3. שדות התאמה
-  const skuList = items.map((item: { sku: any }) => item.sku);
-  const city = shippingAddress.city || null;
+  const skuList = items
+    .map((item: { sku: any }) => item.sku)
+    .filter((sku: any) => sku); // מסנן SKU ריק
+  const city = shippingAddress.city || billingAddress.city || null;
   const totalAmount = parseFloat(orderData.total_price || "0");
 
   // 4. עלות משלוח - Shopify
-  const shippingLine = orderData.shipping_line || {};
-  const shippingCost = parseFloat(shippingLine.price || "0");
+  const shippingLines = orderData.shipping_lines || [];
+  const shippingCost = shippingLines.reduce((sum, line) => {
+    return sum + parseFloat(String(line.price ?? "0"));
+  }, 0);
+
+  // 5. בדיקה אם ההזמנה דורשת משלוח
+  const requiresShipping = (orderData.line_items || []).some(
+    (item: { requires_shipping: any }) => item.requires_shipping,
+  );
 
   // Debug logs
   console.log("items", items);
   console.log("shippingAddress", shippingAddress);
-  console.log("orderData", orderData);
+  console.log("requiresShipping", requiresShipping);
 
   return {
     matchFields: {
@@ -104,38 +110,43 @@ function extractShippingDetails(orderData: {
     },
     orderId: orderData.id,
     orderNumber: orderData.order_number || orderData.name?.replace("#", ""),
-    platform: "SHOPIFY", // שונה מ-WIX ל-SHOPIFY
+    platform: "SHOPIFY",
     fulfillmentStatus: (
-      orderData.fulfillment_status || "UNKNOWN"
+      orderData.fulfillment_status || "UNFULFILLED"
     ).toUpperCase(),
-    shippingType: shippingAddress ? "DELIVERY" : "UNKNOWN", // Shopify לא תומך ב-PICKUP באותו אופן
+    shippingType: requiresShipping ? "DELIVERY" : "UNKNOWN",
     createdAt: FieldValue.serverTimestamp(),
 
     shipping: {
-      title: shippingLine.title || null,
+      title:
+        shippingLines[0]?.title ||
+        (requiresShipping ? "Standard Shipping" : null),
       instructions: orderData.note || null,
-      deliveryTime: null, // לא זמין ב-Shopify
+      deliveryTime: null,
       cost: {
         amount: shippingCost,
-        formatted: `${shippingCost} ${orderData.currency || "USD"}`,
+        formatted: `${shippingCost} ${orderData.currency || "ILS"}`,
         tax: parseFloat(orderData.total_tax || "0"),
-        taxRate: "0", // לא זמין ישירות ב-Shopify
+        taxRate: orderData.tax_lines?.[0]?.rate?.toString() || "0",
       },
       address: {
         street: shippingAddress.address1 || null,
         number: shippingAddress.address2 || null,
-        apt: null, // לא זמין ב-Shopify
+        apt: null,
         city: shippingAddress.city || null,
-        country: shippingAddress.country || null,
+        country:
+          shippingAddress.country || shippingAddress.country_name || null,
         postalCode: shippingAddress.zip || null,
-        addressLine2: null, // לא זמין ב-Shopify
+        addressLine2: null,
       },
       recipient: {
         name:
           `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() ||
           shippingAddress.name ||
+          `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
+          billingAddress.name ||
           null,
-        phone: shippingAddress.phone || null,
+        phone: shippingAddress.phone || billingAddress.phone || null,
       },
     },
 
@@ -143,7 +154,7 @@ function extractShippingDetails(orderData: {
       email: orderData.email || customer.email || null,
       contactId: customer.id || null,
       name:
-        `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
+        `${billingAddress.first_name || customer.first_name || ""} ${billingAddress.last_name || customer.last_name || ""}`.trim() ||
         billingAddress.name ||
         customer.name ||
         null,
