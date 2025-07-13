@@ -179,6 +179,23 @@ function formatIsraeliPhoneNumber(phoneNumber: string) {
   return null;
 }
 
+async function saveErrorToFirestore(
+  instanceId: string,
+  message: string,
+  error: unknown,
+) {
+  await db.collection("errors").add({
+    instanceId,
+    message,
+    error:
+      typeof error === "string"
+        ? error
+        : error instanceof Error
+          ? error.message
+          : JSON.stringify(error),
+    timestamp: FieldValue.serverTimestamp(),
+  });
+}
 export const action: ActionFunction = async ({ request }) => {
   console.log("🚀 orders.create webhook received");
 
@@ -240,10 +257,19 @@ export const action: ActionFunction = async ({ request }) => {
 
   // 5. בדיקת הגדרות ושליחת הודעת אישור אם צריך
   try {
+    console.log("🔍 Checking settings for order_approved logic");
     const settingsSnap = await settingsRef.get();
     const settings = settingsSnap.data();
     if (settings?.order_approved && settings?.order_approved_message) {
       console.log("✅ order_approved is enabled, preparing message");
+      console.log(
+        "🔍 Checking settings for order_approved logic",
+        settings?.order_approved,
+      );
+      console.log(
+        "🔍 Checking settings for order_approved logic",
+        settings?.order_approved_message,
+      );
 
       // קבלת טלפון מה־payload
       const rawPhone = payload.phone || payload.billing_address?.phone;
@@ -273,6 +299,82 @@ export const action: ActionFunction = async ({ request }) => {
     }
   } catch (err) {
     console.error("🔥 Error handling order_approved logic:", err);
+  }
+
+  try {
+    const orderData = payload; // נתוני ההזמנה מ-Shopify
+
+    if (!orderData) {
+      console.warn("⚠️ orderData is undefined or missing");
+      return new Response("Missing order data", { status: 400 });
+    }
+
+    console.log("📦 Extracting shipping details from order:", {
+      orderId: orderData.id,
+      orderNumber: orderData.order_number,
+    });
+
+    const shippingData = extractShippingDetails(orderData);
+    console.log("📤 Prepared shipping data to be saved:", shippingData);
+
+    // שמירת פרטי המשלוח
+    const docRef = await db
+      .collection("whatsapp-settings")
+      .doc(instanceId)
+      .collection("shipping-records")
+      .add(shippingData);
+
+    console.log(`✅ Shipping data saved with ID: ${docRef.id}`);
+
+    // → עכשיו נוסיף/נעדכן לקוח ב־customer-club
+    const billingAddress = orderData.billing_address || {};
+    const customer = orderData.customer || {};
+
+    // טלפון - קודם מכתובת החיוב, אחרת מלקוח
+    const rawPhone = billingAddress.phone || customer.phone;
+    const formattedApprovedPhone = formatIsraeliPhoneNumber(rawPhone);
+
+    if (!formattedApprovedPhone) {
+      console.error("❌ Invalid phone format:", rawPhone);
+      return new Response("Invalid phone format.", { status: 400 });
+    }
+
+    // בוחרים להשתמש ב־phone כמזהה המסמך, כדי למנוע כפילויות
+    const customerDocRef = db
+      .collection(`whatsapp-settings/${instanceId}/customer-club`)
+      .doc(formattedApprovedPhone);
+
+    // מרכיבים את אובייקט הלקוח
+    const customerData = {
+      name: `${billingAddress.first_name || customer.first_name || ""} ${
+        billingAddress.last_name || customer.last_name || ""
+      }`.trim(),
+      email: orderData.email || customer.email || "",
+      phone: formattedApprovedPhone,
+      address: {
+        street: shippingData.shipping.address.street || "",
+        number: String(shippingData.shipping.address.number || ""),
+        city: shippingData.shipping.address.city || "",
+        postalCode: shippingData.shipping.address.postalCode || "",
+        apartment: shippingData.shipping.address.apt || "",
+      },
+      // מוסיפים למערך orderIds את מספר ההזמנה, ללא כפילויות
+      orderIds: FieldValue.arrayUnion(orderData.number),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    // שמירה עם merge: true – יעדכן אם כבר קיים, או ייצור חדש אם לא
+    await customerDocRef.set(customerData, { merge: true });
+    console.log(
+      `✅ Customer saved/updated under phone: ${formattedApprovedPhone}`,
+    );
+
+    return json({ success: true }, { status: 200 });
+  } catch (error) {
+    console.error("🔥 Error saving shipping details:", error);
+    await saveErrorToFirestore(instanceId, "Failed to save order", error);
+    return new Response("Internal server error", { status: 500 });
   }
 
   return json({}, { status: 200 });
