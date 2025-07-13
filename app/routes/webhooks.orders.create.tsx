@@ -4,7 +4,7 @@ import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import crypto from "crypto";
 
-import { db, admin } from "~/firebase.server";
+import { db, admin } from "./../firebase.server";
 
 const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
 
@@ -41,7 +41,7 @@ function extractShippingDetails(orderData: any) {
   console.log("📦 items:", items);
   console.log("🏙 address:", address);
 
-  const skuList = items.map((i) => i.sku);
+  const skuList = items.map((i: { sku: any }) => i.sku);
   const city = address?.city || null;
   const totalAmount = parseFloat(orderData.total_price || "0");
 
