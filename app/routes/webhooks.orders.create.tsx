@@ -15,69 +15,146 @@ function normalizeId(raw: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function extractShippingDetails(orderData: any) {
-  console.log("🔍 raw Shopify order:", orderData);
+function extractShippingDetails(orderData: {
+  shipping_address: {
+    city?: string;
+    address1?: string;
+    address2?: string;
+    country?: string;
+    zip?: string;
+    first_name?: string;
+    last_name?: string;
+    name?: string;
+    phone?: string;
+    [key: string]: any;
+  };
+  billing_address: {
+    first_name?: string;
+    last_name?: string;
+    name?: string;
+    [key: string]: any;
+  };
+  customer: {
+    id?: string;
+    email?: string;
+    name?: string;
+    [key: string]: any;
+  };
+  line_items: any;
+  total_price: any;
+  shipping_line: {
+    price?: string;
+    title?: string;
+    [key: string]: any;
+  };
+  id: any;
+  order_number: any;
+  name: string;
+  fulfillment_status: any;
+  note: any;
+  currency: any;
+  total_tax: any;
+  email: any;
+  subtotal_price: any;
+}) {
+  // 1. מידע משלוח - Shopify
+  const shippingAddress = orderData.shipping_address || {};
+  const billingAddress = orderData.billing_address || {};
+  const customer = orderData.customer || {};
 
-  // 1. הכתובת: השתמש ב־shipping_address אם קיים, אחרת ב־billing_address
-  const addressObj =
-    orderData.shipping_address || orderData.billing_address || {};
-  console.log("🏙 resolved address:", addressObj);
-
-  // 2. עלות משלוח כוללת (ILS)
-  const shippingCostAmount = parseFloat(
-    orderData.current_shipping_price_set?.shop_money?.amount || "0",
+  // 2. פריטים - Shopify
+  const items = (orderData.line_items || []).map(
+    (item: {
+      name: any;
+      title: any;
+      sku: any;
+      quantity: any;
+      price: any;
+      grams: number;
+      image: { src: any };
+    }) => ({
+      name: item.name || item.title || "",
+      sku: item.sku || "",
+      quantity: item.quantity || 1,
+      price: parseFloat(item.price || "0"),
+      weight: item.grams ? item.grams / 1000 : null, // ממיר גרמים לק"ג
+      image: item.image?.src || null,
+    }),
   );
 
-  // 3. שורות המשלוח (יתמלאו אם יש)
-  const shippingLines = (orderData.shipping_lines || []).map((l: any) => ({
-    code: l.code,
-    price: parseFloat(l.price),
-  }));
-  console.log("🚚 shipping lines:", shippingLines);
+  // 3. שדות התאמה
+  const skuList = items.map((item: { sku: any }) => item.sku);
+  const city = shippingAddress.city || null;
+  const totalAmount = parseFloat(orderData.total_price || "0");
 
-  // 4. פרטי הפריטים
-  const items = (orderData.line_items || []).map((it: any) => ({
-    name: it.name,
-    sku: it.sku,
-    quantity: it.quantity,
-    price: parseFloat(it.price),
-    weight: it.grams,
-    image: it.image?.src || null,
-  }));
-  console.log("📦 items:", items);
+  // 4. עלות משלוח - Shopify
+  const shippingLine = orderData.shipping_line || {};
+  const shippingCost = parseFloat(shippingLine.price || "0");
+
+  // Debug logs
+  console.log("items", items);
+  console.log("shippingAddress", shippingAddress);
+  console.log("orderData", orderData);
 
   return {
+    matchFields: {
+      skuList,
+      city,
+      totalAmount,
+    },
     orderId: orderData.id,
-    orderNumber: orderData.order_number,
+    orderNumber: orderData.order_number || orderData.name?.replace("#", ""),
+    platform: "SHOPIFY", // שונה מ-WIX ל-SHOPIFY
+    fulfillmentStatus: (
+      orderData.fulfillment_status || "UNKNOWN"
+    ).toUpperCase(),
+    shippingType: shippingAddress ? "DELIVERY" : "UNKNOWN", // Shopify לא תומך ב-PICKUP באותו אופן
     createdAt: FieldValue.serverTimestamp(),
 
     shipping: {
+      title: shippingLine.title || null,
+      instructions: orderData.note || null,
+      deliveryTime: null, // לא זמין ב-Shopify
       cost: {
-        amount: shippingCostAmount,
+        amount: shippingCost,
+        formatted: `${shippingCost} ${orderData.currency || "USD"}`,
+        tax: parseFloat(orderData.total_tax || "0"),
+        taxRate: "0", // לא זמין ישירות ב-Shopify
       },
-      lines: shippingLines,
       address: {
-        street: addressObj.address1 || null,
-        number: addressObj.address2 || null,
-        city: addressObj.city || null,
-        country: addressObj.country || null,
-        postalCode: addressObj.zip || null,
+        street: shippingAddress.address1 || null,
+        number: shippingAddress.address2 || null,
+        apt: null, // לא זמין ב-Shopify
+        city: shippingAddress.city || null,
+        country: shippingAddress.country || null,
+        postalCode: shippingAddress.zip || null,
+        addressLine2: null, // לא זמין ב-Shopify
       },
       recipient: {
         name:
-          `${addressObj.first_name || ""} ${addressObj.last_name || ""}`.trim() ||
-          addressObj.name ||
+          `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() ||
+          shippingAddress.name ||
           null,
-        phone: addressObj.phone || null,
+        phone: shippingAddress.phone || null,
       },
+    },
+
+    buyer: {
+      email: orderData.email || customer.email || null,
+      contactId: customer.id || null,
+      name:
+        `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
+        billingAddress.name ||
+        customer.name ||
+        null,
     },
 
     items,
 
     total: {
       subtotal: parseFloat(orderData.subtotal_price || "0"),
-      shipping: shippingCostAmount,
-      total: parseFloat(orderData.total_price || "0"),
+      shipping: shippingCost,
+      total: totalAmount,
     },
   };
 }
