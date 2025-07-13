@@ -1,7 +1,10 @@
 // app/firebase.server.ts
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import {
+  getFirestore,
+  FieldValue as FirestoreFieldValue,
+} from "firebase-admin/firestore";
 
 const serviceAccount = {
   type: "service_account",
@@ -19,15 +22,16 @@ const serviceAccount = {
   universe_domain: "googleapis.com",
 };
 
+// אתחול Firebase Admin אם עדיין לא אתחלנו
 if (!getApps().length) {
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
+  initializeApp({ credential: cert(serviceAccount) });
 }
 
-// Firestore ו-Auth
+// יצוא Firestore DB
 export const db = getFirestore();
-// (אם אתה צריך FieldValue.serverTimestamp)
-export const FieldValue = FieldValue;
-// Admin SDK (לקריאה אל admin.firestore.FieldValue אם תרצה)
-export const admin = { auth: getAuth(), apps: getApps() };
+
+// יצוא FieldValue לשימוש ב-serverTimestamp
+export const FieldValue = FirestoreFieldValue;
+
+// יצוא Admin Auth אם צריך
+export const adminAuth = getAuth();
