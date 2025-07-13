@@ -4,7 +4,6 @@ import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import crypto from "crypto";
 
-// ייבוא של ה־db ושל admin (FieldValue) מתוך firebase.server.js
 import { db, admin } from "~/firebase.server";
 
 const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
@@ -16,10 +15,8 @@ function normalizeId(raw: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * מחלץ את פרטי ההזמנה למבנה שאתה צריך
- */
 function extractShippingDetails(orderData: any) {
+  console.log("🔍 extractShippingDetails input:", orderData);
   const shippingInfo = orderData.shippingInfo || {};
   const logistics = shippingInfo.logistics || {};
   const shippingCost = shippingInfo.cost || {};
@@ -30,7 +27,7 @@ function extractShippingDetails(orderData: any) {
   const isDirectShipping = !!destination.address;
   const address = isPickup ? pickup.address : destination.address;
   const contact = isPickup ? pickup.contactDetails : destination.contactDetails;
-  const lineItems = orderData.line_items || []; // שים לב: בווב־הוק השדה נקרא line_items
+  const lineItems = orderData.line_items || [];
 
   const items = lineItems.map((item: any) => ({
     name: item.name || "",
@@ -38,19 +35,18 @@ function extractShippingDetails(orderData: any) {
     quantity: item.quantity || 1,
     price: parseFloat(item.price || "0"),
     weight: item.grams ?? null,
-    image: item.image ? item.image.src : null,
+    image: item.image?.src || null,
   }));
 
-  const skuList = items.map((i: { sku: any }) => i.sku);
+  console.log("📦 items:", items);
+  console.log("🏙 address:", address);
+
+  const skuList = items.map((i) => i.sku);
   const city = address?.city || null;
   const totalAmount = parseFloat(orderData.total_price || "0");
 
-  return {
-    matchFields: {
-      skuList,
-      city,
-      totalAmount,
-    },
+  const result = {
+    matchFields: { skuList, city, totalAmount },
     orderId: orderData.id,
     orderNumber: orderData.order_number,
     platform: "SHOPIFY",
@@ -79,7 +75,6 @@ function extractShippingDetails(orderData: any) {
         city: address?.city || null,
         country: address?.country || null,
         postalCode: address?.zip || null,
-        addressLine2: address?.address2 || null,
       },
       recipient: {
         name: `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim(),
@@ -101,9 +96,14 @@ function extractShippingDetails(orderData: any) {
       total: parseFloat(orderData.total_price || "0"),
     },
   };
+
+  console.log("✅ extractShippingDetails output:", result);
+  return result;
 }
 
 export const action: ActionFunction = async ({ request }) => {
+  console.log("🚀 orders.create webhook received");
+
   // 1. אימות HMAC
   const rawBody = await request.clone().text();
   const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
@@ -122,6 +122,7 @@ export const action: ActionFunction = async ({ request }) => {
       valid = false;
     }
   }
+  console.log("🔐 HMAC valid?", valid);
   if (!valid) {
     console.warn("❌ invalid HMAC", { computedHmac, shopifyHmac });
     return new Response("Unauthorized", { status: 401 });
@@ -131,6 +132,8 @@ export const action: ActionFunction = async ({ request }) => {
   const payload = JSON.parse(rawBody);
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
+  console.log("🏷 shopDomain:", shopDomain, "→ instanceId:", instanceId);
+  console.log("📦 payload.id:", payload.id);
 
   // 3. חילוץ הנתונים למבנה הרצוי
   const shippingData = extractShippingDetails(payload);
@@ -140,6 +143,12 @@ export const action: ActionFunction = async ({ request }) => {
     .collection("whatsapp-settings")
     .doc(instanceId)
     .collection("shipping-records");
+  console.log(
+    "🗂 will write to:",
+    collectionRef.path,
+    "/doc:",
+    String(payload.id),
+  );
 
   try {
     await collectionRef
