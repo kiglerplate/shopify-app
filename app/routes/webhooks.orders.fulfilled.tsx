@@ -3,8 +3,17 @@ import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import crypto from "crypto";
 import { db, FieldValue } from "./../firebase.server";
-
+import type { DocumentReference } from "firebase-admin/firestore";
 const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
+
+function formatIsraeliPhoneNumber(phoneNumber: string): string | null {
+  if (!phoneNumber) return null;
+
+  const digits = phoneNumber.replace(/\D/g, "");
+  if (digits.startsWith("972")) return digits;
+  if (digits.startsWith("0")) return `972${digits.slice(1)}`;
+  return null;
+}
 
 function normalizeId(raw: string): string {
   return raw
@@ -13,10 +22,67 @@ function normalizeId(raw: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-export const action: ActionFunction = async ({ request }) => {
-  console.log("🚚 fulfillments.create webhook received");
+async function sendTrackingNotification({
+  settingsRef,
+  payload,
+  orderData,
+  instanceId
+}: {
+ settingsRef: DocumentReference,
+  payload: any,
+  orderData: any,
+  instanceId: string
+}) {
+  try {
+    console.log("🔍 Checking settings for shipment tracking");
+    const settingsSnap = await settingsRef.get();
+    const settings = settingsSnap.data();
 
-  // 1. אימות HMAC
+    if (!settings?.ship_orders1 || !settings?.ship_tracking_message1 || !payload.tracking_url) {
+      console.log("ℹ️ Shipment tracking notifications disabled or missing tracking URL");
+      return;
+    }
+
+    const rawPhone = payload.destination?.phone || orderData.shipping?.recipient?.phone;
+    const formattedPhone = formatIsraeliPhoneNumber(rawPhone);
+
+    if (!formattedPhone) {
+      console.error("❌ Invalid phone number format:", rawPhone);
+      return;
+    }
+
+    const trackingMessage = [
+      settings.ship_tracking_message1,
+      payload.tracking_number && `מספר מעקב: ${payload.tracking_number}`,
+      payload.tracking_url && `קישור מעקב: ${payload.tracking_url}`,
+      orderData.orderNumber && `מספר הזמנה: ${orderData.orderNumber}`
+    ].filter(Boolean).join('\n');
+
+    const txRef = db.collection("transactions")
+      .doc("incomingOrders")
+      .collection("records");
+
+    await txRef.add({
+      clientId: instanceId,
+      number: formattedPhone,
+      message: trackingMessage,
+      transactionType: "shipment_tracking",
+      trackingNumber: payload.tracking_number,
+      trackingUrl: payload.tracking_url,
+      orderNumber: orderData.orderNumber,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`✅ Tracking notification queued for ${formattedPhone}`);
+  } catch (err) {
+    console.error("🔥 Failed to send tracking notification:", err);
+  }
+}
+
+export const action: ActionFunction = async ({ request }) => {
+  console.log("🚚 Fulfillment created webhook received");
+
+  // HMAC Validation
   const rawBody = await request.clone().text();
   const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
   const computedHmac = crypto
@@ -24,41 +90,31 @@ export const action: ActionFunction = async ({ request }) => {
     .update(rawBody, "utf8")
     .digest("base64");
 
-  const valid = crypto.timingSafeEqual(
-    Buffer.from(computedHmac),
-    Buffer.from(shopifyHmac),
-  );
-
-  if (!valid) {
-    console.warn("❌ Invalid HMAC");
+  if (!crypto.timingSafeEqual(Buffer.from(computedHmac), Buffer.from(shopifyHmac))) {
+    console.warn("❌ HMAC validation failed");
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // 2. עיבוד הנתונים
   const payload = JSON.parse(rawBody);
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
-  const orderId = payload.order_id;
+  const orderId = String(payload.order_id);
 
   try {
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
     const shippingRecordsRef = settingsRef.collection("shipping-records");
     const shippingActiveRef = settingsRef.collection("shipping-active");
 
-    // 3. שליפת ההזמנה המקורית
-    const orderDoc = await shippingRecordsRef.doc(String(orderId)).get();
-
+    // Get the original order
+    const orderDoc = await shippingRecordsRef.doc(orderId).get();
     if (!orderDoc.exists) {
       console.warn(`Order ${orderId} not found in shipping-records`);
-      return json(
-        { success: false, message: "Order not found" },
-        { status: 404 },
-      );
+      return json({ success: false, message: "Order not found" }, { status: 404 });
     }
 
     const orderData = orderDoc.data();
 
-    // 4. הוספת נתוני המעקב
+    // Prepare fulfillment data
     const fulfillmentData = {
       ...orderData,
       fulfillment: {
@@ -73,7 +129,7 @@ export const action: ActionFunction = async ({ request }) => {
         },
         createdAt: payload.created_at,
         updatedAt: payload.updated_at,
-        lineItems: payload.line_items.map((item: any) => ({
+        lineItems: (payload.line_items || []).map((item: any) => ({
           id: item.id,
           title: item.title,
           quantity: item.quantity,
@@ -83,17 +139,24 @@ export const action: ActionFunction = async ({ request }) => {
       lastUpdated: FieldValue.serverTimestamp(),
     };
 
-    // 5. העברה לקולקציית shipping-active
+    // Execute the transfer as a batch
     const batch = db.batch();
-
-    batch.set(shippingActiveRef.doc(String(orderId)), fulfillmentData);
-
-    batch.delete(shippingRecordsRef.doc(String(orderId)));
-
+    batch.set(shippingActiveRef.doc(orderId), fulfillmentData);
+    batch.delete(shippingRecordsRef.doc(orderId));
     await batch.commit();
 
     console.log(`✅ Order ${orderId} moved to shipping-active`);
+
+    // Send tracking notification if enabled
+    await sendTrackingNotification({
+      settingsRef,
+      payload,
+      orderData,
+      instanceId
+    });
+
     return json({ success: true }, { status: 200 });
+
   } catch (error) {
     console.error("🔥 Error processing fulfillment:", error);
     return new Response("Internal server error", { status: 500 });
