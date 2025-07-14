@@ -315,16 +315,16 @@ export const action: ActionFunction = async ({ request }) => {
     });
 
     const shippingData = extractShippingDetails(orderData);
-    console.log("📤 Prepared shipping data to be saved:", shippingData);
+    // console.log("📤 Prepared shipping data to be saved:", shippingData);
 
-    // שמירת פרטי המשלוח
-    const docRef = await db
-      .collection("whatsapp-settings")
-      .doc(instanceId)
-      .collection("shipping-records")
-      .add(shippingData);
+    // // שמירת פרטי המשלוח
+    // const docRef = await db
+    //   .collection("whatsapp-settings")
+    //   .doc(instanceId)
+    //   .collection("shipping-records")
+    //   .add(shippingData);
 
-    console.log(`✅ Shipping data saved with ID: ${docRef.id}`);
+    // console.log(`✅ Shipping data saved with ID: ${docRef.id}`);
 
     // → עכשיו נוסיף/נעדכן לקוח ב־customer-club
     const billingAddress = orderData.billing_address || {};
