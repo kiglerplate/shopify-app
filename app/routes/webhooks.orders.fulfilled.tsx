@@ -80,22 +80,23 @@ export const action: ActionFunction = async ({ request }) => {
   if (!crypto.timingSafeEqual(Buffer.from(computedHmac), Buffer.from(shopifyHmac))) {
     return new Response("Unauthorized", { status: 401 });
   }
+const payload = JSON.parse(rawBody);
 
   // 2. פרסינג ו‑destructuring של כל השדות המגיעים
-  const payload = JSON.parse(rawBody);
-  const {
-    id:                fulfillmentId,
-    order_id:          orderId,
-    status,
-    created_at,
-    updated_at,
-    tracking_company,
-    tracking_number,
-    tracking_numbers = [],
-    tracking_url,
-    tracking_urls    = [],
-    line_items       = [],
-  } = payload;
+const data = payload.fulfillment ?? payload;
+const {
+  id:        fulfillmentId,
+  order_id:  orderId,
+  status,
+  created_at,
+  updated_at,
+  tracking_company,
+  tracking_number,
+  tracking_numbers = [],
+  tracking_url,
+  tracking_urls    = [],
+  line_items       = [],
+} = data;
 
   // 3. הכנת קישורי Firebase
   const shopDomain       = request.headers.get("X-Shopify-Shop-Domain")!;
@@ -126,29 +127,35 @@ if (fulfillmentId == null) {
   const orderData = orderSnap.data();
 
   // 5. בניית מבנה הנתונים של ה‑fulfillment
-  const fulfillmentData = {
-    ...orderData,
-    fulfillment: {
-      id:        fulfillmentId,
-      status,                               // עכשיו שדה מוגדר מתוך payload
-      tracking: {
-        company: tracking_company,
-        number:  tracking_number,
-        numbers: tracking_numbers,
-        url:     tracking_url,
-        urls:    tracking_urls,
-      },
-      createdAt: created_at,
-      updatedAt: updated_at,
-      lineItems: line_items.map((item: any) => ({
-        id:       item.id,
-        title:    item.title,
-        quantity: item.quantity,
-        sku:      item.sku,
-      })),
-    },
-    lastUpdated: FieldValue.serverTimestamp(),
-  };
+const f: any = {
+  id: fulfillmentId,
+  tracking: {
+    company: tracking_company,
+    number:  tracking_number,
+    numbers: tracking_numbers,
+    url:     tracking_url,
+    urls:    tracking_urls,
+  },
+  createdAt: created_at,
+  updatedAt: updated_at,
+  lineItems: line_items.map((item: { id: any; title: any; quantity: any; sku: any; }) => ({
+    id:       item.id,
+    title:    item.title,
+    quantity: item.quantity,
+    sku:      item.sku,
+  })),
+};
+// רק אם יש status מוסיפים
+if (status != null) {
+  f.status = status;
+}
+
+const fulfillmentData = {
+  ...orderData,
+  fulfillment: f,
+  lastUpdated: FieldValue.serverTimestamp(),
+};
+
 
   // 6. עדכון במאגר כפעולה אטומית
   const batch = db.batch();
