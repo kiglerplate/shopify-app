@@ -96,108 +96,133 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   const payload = JSON.parse(rawBody);
-  console.log("📦 Full fulfillment payload:", {
-    id: payload.id,
-    order_id: payload.order_id,
-    status: payload.status,
-    tracking_company: payload.tracking_company,
-    tracking_number: payload.tracking_number,
-    tracking_url: payload.tracking_url,
-    line_items_count: payload.line_items?.length || 0
-  });
+  console.log("📦 Full fulfillment payload:", JSON.stringify(payload, null, 2));
+
+  // Extract order identifier from multiple possible fields
+  const orderIdentifier = payload.order_id || 
+                        payload.name?.replace("#", "") || 
+                        payload.admin_graphql_api_id?.split("/").pop();
+
+  if (!orderIdentifier) {
+    console.error("❌ No valid order identifier found in payload");
+    await db.collection("webhook-errors").add({
+      type: "missing_order_identifier",
+      payload: payload,
+      timestamp: FieldValue.serverTimestamp()
+    });
+    return json(
+      { success: false, message: "Missing order identifier" },
+      { status: 400 }
+    );
+  }
 
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
-  const shopifyOrderId = String(payload.order_id); // Using order_id instead of id
-  console.log("🔍 Processing fulfillment for Shopify order ID:", shopifyOrderId);
-
+  
   try {
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
     const shippingRecordsRef = settingsRef.collection("shipping-records");
     const shippingActiveRef = settingsRef.collection("shipping-active");
 
-    // Get the original order
-    const orderDoc = await shippingRecordsRef.doc(shopifyOrderId).get();
-    if (!orderDoc.exists) {
-      console.warn(`❌ Order ${shopifyOrderId} not found in shipping-records`);
-      return json({ 
-        success: false, 
-        message: "Order not found",
-        shopifyOrderId 
-      }, { status: 404 });
+    // Try to find order by multiple fields
+    let orderDoc;
+    const queries = [
+      shippingRecordsRef.where("orderNumber", "==", orderIdentifier).limit(1),
+      shippingRecordsRef.where("orderId", "==", orderIdentifier).limit(1),
+      shippingRecordsRef.where("name", "==", `#${orderIdentifier}`).limit(1)
+    ];
+
+    for (const query of queries) {
+      const snapshot = await query.get();
+      if (!snapshot.empty) {
+        orderDoc = snapshot.docs[0];
+        break;
+      }
+    }
+
+    if (!orderDoc) {
+      console.error(`❌ Order ${orderIdentifier} not found in any field`);
+      return json(
+        { success: false, message: "Order not found" },
+        { status: 404 }
+      );
     }
 
     const orderData = orderDoc.data();
-    if (!orderData) {
-      console.warn(`❌ Order data for ${shopifyOrderId} is undefined`);
-      return json({ 
-        success: false, 
-        message: "Order data is undefined",
-        shopifyOrderId 
-      }, { status: 404 });
-    }
-    console.log("🛒 Found order:", {
-      orderId: orderData.orderId,
-      orderNumber: orderData.orderNumber
-    });
+    const fulfillmentData = buildFulfillmentData(orderData, payload);
 
-    // Prepare fulfillment data with proper defaults
-    const fulfillmentData = {
-      ...orderData,
-      fulfillment: {
-        id: payload.id || null,
-        status: payload.status || "fulfilled", // Default status
-        tracking: {
-          company: payload.tracking_company || null,
-          number: payload.tracking_number || null,
-          numbers: payload.tracking_numbers || [],
-          url: payload.tracking_url || null,
-          urls: payload.tracking_urls || [],
-        },
-        createdAt: payload.created_at || new Date().toISOString(),
-        updatedAt: payload.updated_at || new Date().toISOString(),
-        lineItems: (payload.line_items || []).map((item: any) => ({
-          id: item.id || null,
-          title: item.title || "",
-          quantity: item.quantity || 0,
-          sku: item.sku || "",
-        })),
-      },
-      lastUpdated: FieldValue.serverTimestamp(),
-    };
 
-    // Execute the transfer as a batch with ignoreUndefinedProperties
-    const batch = db.batch();
-    batch.set(shippingActiveRef.doc(shopifyOrderId), fulfillmentData, { 
-      merge: true
-    });
-    batch.delete(shippingRecordsRef.doc(shopifyOrderId));
-    await batch.commit();
+function removeUndefined(obj: any): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => [k, v === Object(v) ? removeUndefined(v) : v])
+  );
+}
 
-    console.log(`✅ Order ${(orderData?.orderNumber ?? shopifyOrderId)} moved to shipping-active`);
+await shippingActiveRef.doc(orderDoc.id).set(
+  removeUndefined(fulfillmentData),
+  { merge: true }
+);
 
-    // Send tracking notification if enabled
-    await sendTrackingNotification({
-      settingsRef,
-      payload,
-      orderData,
-      instanceId
-    });
 
-    return json({ success: true }, { status: 200 });
+    console.log(`✅ Fulfillment processed for order ${orderIdentifier}`);
+    return json({ success: true });
 
   } catch (error) {
-    console.error("🔥 Error processing fulfillment:", {
-      error: error instanceof Error ? error.message : String(error),
-      shopifyOrderId,
+    console.error("🔥 Fulfillment processing failed:", {
+      // error: error.message,
+      orderIdentifier,
       payload: {
+        id: payload.id,
         status: payload.status,
-        tracking_number: payload.tracking_number,
-        line_items: payload.line_items?.length
+        tracking: payload.tracking_number
       }
     });
-    return new Response("Internal server error", { status: 500 });
+    return new Response("Server error", { status: 500 });
   }
 };
 
+// החלף את הפונקציה buildFulfillmentData בגרסה זו
+function buildFulfillmentData(orderData: any, payload: any) {
+  // פונקציית עזר לטיפול ב-undefined
+  const safe = (value: any, fallback: any = null) => 
+    value !== undefined ? value : fallback;
+
+  return {
+    ...orderData,
+    fulfillment: {
+      id: safe(payload.id),
+      status: safe(payload.status, 'unknown'),
+      tracking: {
+        company: safe(payload.tracking_company, 'unknown'),
+        number: safe(payload.tracking_number, generateTrackingNumber()),
+        url: safe(payload.tracking_url, generateTrackingUrl(payload.id)),
+        numbers: safe(payload.tracking_numbers, []),
+        urls: safe(payload.tracking_urls, [])
+      },
+      createdAt: safe(payload.created_at, new Date().toISOString()),
+      updatedAt: safe(payload.updated_at, new Date().toISOString()),
+      lineItems: (payload.line_items || []).map((item: any) => ({
+        id: safe(item.id),
+        title: safe(item.title, ''),
+        quantity: safe(item.quantity, 0),
+        sku: safe(item.sku, '')
+      }))
+    },
+    lastUpdated: FieldValue.serverTimestamp()
+  };
+}
+
+// ואז השתמש כך:
+// (Removed duplicate code block that referenced orderDoc out of scope)
+
+function generateTrackingNumber(): any {
+  throw new Error("Function not implemented.");
+}
+
+function generateTrackingUrl(id: any): string {
+  // Placeholder implementation, replace with your logic if needed
+  return `https://tracking.example.com/${id}`;
+}
 
