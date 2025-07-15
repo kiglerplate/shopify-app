@@ -82,7 +82,7 @@ async function sendTrackingNotification({
 export const action: ActionFunction = async ({ request }) => {
   console.log("🚚 Fulfillment created webhook received");
 
-  // HMAC Validation (נשאר כמו לפני)
+  // HMAC Validation
   const rawBody = await request.clone().text();
   const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
   const computedHmac = crypto
@@ -101,36 +101,34 @@ export const action: ActionFunction = async ({ request }) => {
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
   
-  // נשתמש ב-order_number מהפולפילמנט
-  const orderNumberFromFulfillment = String(payload.order_number || payload.name?.replace("#", ""));
-  console.log("🔍 Processing fulfillment for order number:", orderNumberFromFulfillment);
+  // נשתמש ב-ID הפנימי של ההזמנה מ-Shopify
+  const shopifyOrderId = String(payload.id); // "6381449445601"
+  console.log("🔍 Processing fulfillment for Shopify order ID:", shopifyOrderId);
 
   try {
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
     const shippingRecordsRef = settingsRef.collection("shipping-records");
     const shippingActiveRef = settingsRef.collection("shipping-active");
 
-    // נחפש את ההזמנה לפי orderNumber
-    const querySnapshot = await shippingRecordsRef
-      .where("orderNumber", "==", orderNumberFromFulfillment)
-      .limit(1)
-      .get();
+    // נחפש את ההזמנה לפי ה-ID הפנימי של Shopify
+    const orderDoc = await shippingRecordsRef.doc(shopifyOrderId).get();
 
-    if (querySnapshot.empty) {
-      console.warn(`❌ Order with number ${orderNumberFromFulfillment} not found in shipping-records`);
-      return json({ success: false, message: "Order not found" }, { status: 404 });
+    if (!orderDoc.exists) {
+      console.warn(`❌ Order with Shopify ID ${shopifyOrderId} not found in shipping-records`);
+      console.log("Available fields in payload:", Object.keys(payload));
+      return json({ 
+        success: false, 
+        message: "Order not found",
+        shopifyOrderId: shopifyOrderId
+      }, { status: 404 });
     }
 
-    // נקבל את המסמך הראשון שהתאים
-    const orderDoc = querySnapshot.docs[0];
     const orderData = orderDoc.data();
-    const orderDocId = orderDoc.id; // ה-ID של המסמך ב-Firestore
-
-    console.log("🛒 Original order data:", JSON.stringify({
-      firestoreDocId: orderDocId,
-      orderNumber: orderData.orderNumber,
-      orderId: orderData.orderId
-    }, null, 2));
+    // console.log("🛒 Original order data:", JSON.stringify({
+    //   firestoreDocId: orderDoc.id,
+    //   shopifyOrderId: orderData.orderId,
+    //   orderNumber: orderData.orderNumber
+    // }, null, 2));
 
     // Prepare fulfillment data
     const fulfillmentData = {
@@ -157,13 +155,19 @@ export const action: ActionFunction = async ({ request }) => {
       lastUpdated: FieldValue.serverTimestamp(),
     };
 
+    // console.log("🚛 Fulfillment data to save:", JSON.stringify({
+    //   fulfillment: fulfillmentData.fulfillment,
+    //   shopifyOrderId: fulfillmentData.orderId,
+    //   orderNumber: fulfillmentData.orderNumber
+    // }, null, 2));
+
     // Execute the transfer as a batch
     const batch = db.batch();
-    batch.set(shippingActiveRef.doc(orderDocId), fulfillmentData); // שימוש ב-ID המקורי של המסמך
-    batch.delete(shippingRecordsRef.doc(orderDocId));
+    batch.set(shippingActiveRef.doc(shopifyOrderId), fulfillmentData);
+    batch.delete(shippingRecordsRef.doc(shopifyOrderId));
     await batch.commit();
 
-    console.log(`✅ Order ${orderNumberFromFulfillment} (doc ID: ${orderDocId}) moved to shipping-active`);
+    // console.log(`✅ Order ${orderData.orderNumber || shopifyOrderId} (Shopify ID: ${shopifyOrderId}) moved to shipping-active`);
 
     // Send tracking notification if enabled
     await sendTrackingNotification({
@@ -178,7 +182,7 @@ export const action: ActionFunction = async ({ request }) => {
   } catch (error) {
     console.error("🔥 Error processing fulfillment:", {
       error: error instanceof Error ? error.message : String(error),
-      orderNumberAttempted: orderNumberFromFulfillment,
+      shopifyOrderId: shopifyOrderId,
       payloadSummary: {
         fulfillment_id: payload.id,
         tracking: payload.tracking_number
