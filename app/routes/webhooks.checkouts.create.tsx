@@ -53,9 +53,10 @@ function extractCartDetails(cartData: any) {
     customer: {
       email: cartData.email || customer.email || "",
       phone: formattedPhone || "",
-      name: `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
-            `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() ||
-            customer.name || "",
+      name:
+        `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
+        `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() ||
+        customer.name || "",
       customer_id: customer.id || null,
     },
     billing_address: {
@@ -88,7 +89,10 @@ function extractCartDetails(cartData: any) {
 export const action = async ({ request }: ActionFunctionArgs) => {
   console.log("🛒 carts/create webhook received");
 
+  // Log the incoming payload for debugging
   const rawBody = await request.clone().text();
+  console.log("📦 carts/create raw body:", rawBody);
+
   const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
   const computedHmac = crypto
     .createHmac("sha256", SHOPIFY_SECRET)
@@ -101,6 +105,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const payload = JSON.parse(rawBody);
+  console.log("📦 carts/create parsed payload:", payload);
+
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
 
@@ -145,9 +151,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         lastAbandonedAt: FieldValue.serverTimestamp(),
         abandonedCartIds: FieldValue.arrayUnion(payload.id),
         address: {
-          street: cartData.shipping_address.street || cartData.billing_address.street || "",
-          city: cartData.shipping_address.city || cartData.billing_address.city || "",
-          postalCode: cartData.shipping_address.postalCode || cartData.billing_address.postalCode || "",
+          street:
+            cartData.shipping_address.street || cartData.billing_address.street || "",
+          city:
+            cartData.shipping_address.city || cartData.billing_address.city || "",
+          postalCode:
+            cartData.shipping_address.postalCode ||
+            cartData.billing_address.postalCode || "",
         },
         totalAbandoned: FieldValue.increment(1),
         createdAt: FieldValue.serverTimestamp(),
