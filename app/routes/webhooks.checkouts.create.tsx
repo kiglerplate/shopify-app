@@ -135,14 +135,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-    // 2. Save full cart data
-    await settingsRef
-      .collection("order_abandoned")
-      .doc(String(payload.id))
-      .set({
-        ...cartData,
-        createdAt: FieldValue.serverTimestamp(),
-      });
+    // // 2. Save full cart data
+    // await settingsRef
+    //   .collection("order_abandoned")
+    //   .doc(String(payload.id))
+    //   .set({
+    //     ...cartData,
+    //     createdAt: FieldValue.serverTimestamp(),
+    //   });
 
     // 3. Update abandoned customer record
     if (cartData.customer.phone) {

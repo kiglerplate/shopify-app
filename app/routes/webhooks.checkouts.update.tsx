@@ -129,13 +129,13 @@ export const action: ActionFunction = async ({ request }) => {
     );
 
   // Update full abandoned cart record
-  await settingsRef
-    .collection("order_abandoned")
-    .doc(checkoutId)
-    .set(
-      { ...cartData, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
+  // await settingsRef
+  //   .collection("order_abandoned")
+  //   .doc(checkoutId)
+  //   .set(
+  //     { ...cartData, updatedAt: FieldValue.serverTimestamp() },
+  //     { merge: true }
+  //   );
 
   return json({ success: true }, { status: 200 });
 };
