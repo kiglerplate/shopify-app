@@ -3,7 +3,7 @@
 client_id = "ac45b68fad2c2a395bc9b57cb191df60"
 name = "WarmLight"
 handle = "65-1"
-application_url = "https://concentrate-reduce-scoop-spears.trycloudflare.com"
+application_url = "https://warmlight.xyz"
 embedded = true
 
 [build]
@@ -45,15 +45,19 @@ api_version = "2025-04"
   topics = [ "checkouts/create" ]
   uri = "/webhooks/checkouts/create"
 
+  [[webhooks.subscriptions]]
+  topics = [ "checkouts/update" ]
+  uri = "/webhooks/checkouts/update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products, read_orders, read_checkouts, read_customers"
 
 [auth]
 redirect_urls = [
-  "https://concentrate-reduce-scoop-spears.trycloudflare.com/auth/callback",
-  "https://concentrate-reduce-scoop-spears.trycloudflare.com/auth/shopify/callback",
-  "https://concentrate-reduce-scoop-spears.trycloudflare.com/api/auth/callback"
+  "https://warmlight.xyz/auth/callback",
+  "https://warmlight.xyz/auth/shopify/callback",
+  "https://warmlight.xyz/api/auth/callback"
 ]
 
 [pos]
