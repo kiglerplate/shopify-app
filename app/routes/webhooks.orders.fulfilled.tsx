@@ -96,9 +96,18 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   const payload = JSON.parse(rawBody);
+  console.log("📦 Full fulfillment payload:", JSON.stringify(payload, null, 2)); // <-- לוג חדש
+
   const shopDomain = request.headers.get("X-Shopify-Shop-Domain")!;
   const instanceId = normalizeId(shopDomain);
   const orderId = String(payload.order_id);
+  
+  console.log("🔍 Processing fulfillment for:", {
+    instanceId,
+    orderId,
+    fulfillmentId: payload.id,
+    trackingNumber: payload.tracking_number
+  });
 
   try {
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
@@ -108,11 +117,13 @@ export const action: ActionFunction = async ({ request }) => {
     // Get the original order
     const orderDoc = await shippingRecordsRef.doc(orderId).get();
     if (!orderDoc.exists) {
-      console.warn(`Order ${orderId} not found in shipping-records`);
+      console.warn(`❌ Order ${orderId} not found in shipping-records`);
+      console.log("Available fields in payload:", Object.keys(payload));
       return json({ success: false, message: "Order not found" }, { status: 404 });
     }
 
     const orderData = orderDoc.data();
+    console.log("🛒 Original order data:", JSON.stringify(orderData, null, 2)); // <-- לוג חדש
 
     // Prepare fulfillment data
     const fulfillmentData = {
@@ -137,7 +148,15 @@ export const action: ActionFunction = async ({ request }) => {
         })),
       },
       lastUpdated: FieldValue.serverTimestamp(),
+      orderId, // <-- Add this line
+      orderNumber: orderData?.orderNumber ?? "", // <-- Fix: add orderNumber property safely
     };
+
+    console.log("🚛 Fulfillment data to save:", JSON.stringify({
+      fulfillment: fulfillmentData.fulfillment,
+      orderId: fulfillmentData.orderId,
+      orderNumber: fulfillmentData.orderNumber
+    }, null, 2)); // <-- לוג חדש
 
     // Execute the transfer as a batch
     const batch = db.batch();
@@ -158,7 +177,15 @@ export const action: ActionFunction = async ({ request }) => {
     return json({ success: true }, { status: 200 });
 
   } catch (error) {
-    console.error("🔥 Error processing fulfillment:", error);
+    console.error("🔥 Error processing fulfillment:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      payloadSummary: {
+        order_id: payload.order_id,
+        fulfillment_id: payload.id,
+        tracking: payload.tracking_number
+      }
+    });
     return new Response("Internal server error", { status: 500 });
   }
 };
