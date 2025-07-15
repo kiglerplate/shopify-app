@@ -104,6 +104,17 @@ export const action: ActionFunction = async ({ request }) => {
   const shippingRecords  = settingsRef.collection("shipping-records");
   const shippingActive   = settingsRef.collection("shipping-active");
 
+
+  // ←——— ה־GUARD החדש: וידוא שיש לך את השדה fulfillmentId
+if (fulfillmentId == null) {
+  console.error("❌ Missing fulfillmentId in payload:", payload);
+  return json(
+    { success: false, message: "Missing fulfillmentId in webhook payload" },
+    { status: 400 }
+  );
+}
+
+
   console.log("Processing fulfillment for order:", orderId, "with fulfillment ID:", fulfillmentId);
   // 4. קבלת ההזמנה הקיימת לפי order_id
   const orderSnap = await shippingRecords.doc(String(fulfillmentId)).get();
