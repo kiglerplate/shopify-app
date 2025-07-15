@@ -106,7 +106,7 @@ export const action: ActionFunction = async ({ request }) => {
 
   console.log("Processing fulfillment for order:", orderId, "with fulfillment ID:", fulfillmentId);
   // 4. קבלת ההזמנה הקיימת לפי order_id
-  const orderSnap = await shippingRecords.doc(String(orderId)).get();
+  const orderSnap = await shippingRecords.doc(String(fulfillmentId)).get();
 
 
   if (!orderSnap.exists) {
