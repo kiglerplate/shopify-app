@@ -104,8 +104,11 @@ export const action: ActionFunction = async ({ request }) => {
   const shippingRecords  = settingsRef.collection("shipping-records");
   const shippingActive   = settingsRef.collection("shipping-active");
 
+  console.log("Processing fulfillment for order:", orderId, "with fulfillment ID:", fulfillmentId);
   // 4. קבלת ההזמנה הקיימת לפי order_id
   const orderSnap = await shippingRecords.doc(String(orderId)).get();
+
+
   if (!orderSnap.exists) {
     return json({ success: false, message: "Order not found" }, { status: 404 });
   }
