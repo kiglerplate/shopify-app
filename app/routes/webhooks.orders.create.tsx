@@ -243,6 +243,7 @@ export const action: ActionFunction = async ({ request }) => {
     String(payload.id),
   );
 
+
   try {
     await collectionRef
       .doc(String(payload.id))
@@ -255,21 +256,50 @@ export const action: ActionFunction = async ({ request }) => {
     return new Response("Error writing to database", { status: 500 });
   }
 
-    // 4.a Clear matching abandoned carts
-  try {
-    console.log("🔍 Clearing abandoned carts matching this order...");
-    const abandonedRef = settingsRef.collection("abandoned_carte_end");
-    const [byEmail, byPhone] = await Promise.all([
-      abandonedRef.where("buyer.email", "==", shippingData.buyer.email || "").get(),
-      abandonedRef.where("buyer.phone", "==", shippingData.shipping.recipient.phone || "").get(),
-    ]);
-    for (const doc of [...byEmail.docs, ...byPhone.docs]) {
-      console.log(`   🗑️ Deleting abandoned cart ${doc.id}`);
-      await doc.ref.delete();
+      console.log("requiresShipping shippingData", shippingData);
+
+      // 4.a Clear matching abandoned carts
+    try {
+      console.log("🔍 Clearing abandoned carts matching this order...",shippingData.shipping.recipient.phone);
+      console.log("🔍 Clearing abandoned carts matching this order...",shippingData.buyer.email);
+      const abandonedRef = settingsRef.collection("abandoned_carte_end");
+      const [byEmail, byPhone] = await Promise.all([
+        abandonedRef.where("buyer.email", "==", shippingData.buyer.email || "").get(),
+        abandonedRef.where("buyer.phone", "==", shippingData.shipping.recipient.phone || "").get(),
+      ]);
+      for (const doc of [...byEmail.docs, ...byPhone.docs]) {
+        console.log(`   🗑️ Deleting abandoned cart ${doc.id}`);
+        await doc.ref.delete();
+      }
+    } catch (err) {
+      console.error("🔥 Error clearing abandoned carts:", err);
     }
-  } catch (err) {
-    console.error("🔥 Error clearing abandoned carts:", err);
+
+    // 4.b Clear matching pending checkouts
+try {
+  console.log("🔍 Clearing pending checkouts matching this order...", shippingData.shipping.recipient.phone);
+  console.log("🔍 Clearing pending checkouts matching this order...", shippingData.buyer.email);
+
+  const pendingRef = settingsRef.collection("pendingCheckouts");
+
+  const [byEmail, byPhone] = await Promise.all([
+    pendingRef.where("email", "==", shippingData.buyer.email || "").get(),
+    pendingRef.where("phone", "==", shippingData.shipping.recipient.phone || "").get(),
+  ]);
+
+  const uniqueDocs = new Map();
+  [...byEmail.docs, ...byPhone.docs].forEach((doc) => {
+    uniqueDocs.set(doc.id, doc); // מונע כפילויות אם אותו מסמך הופיע גם באימייל וגם בפון
+  });
+
+  for (const doc of uniqueDocs.values()) {
+    console.log(`   🗑️ Deleting pending checkout ${doc.id}`);
+    await doc.ref.delete();
   }
+} catch (err) {
+  console.error("🔥 Error clearing pending checkouts:", err);
+}
+
 
   // 5. בדיקת הגדרות ושליחת הודעת אישור אם צריך
   try {
