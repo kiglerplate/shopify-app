@@ -1,4 +1,4 @@
-// app/routes/webhooks/carts.create.tsx
+// webhooks.checkouts.create.tsx
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import crypto from "crypto";
@@ -15,25 +15,10 @@ function normalizeId(raw: string): string {
 
 function formatIsraeliPhoneNumber(phone: string): string | null {
   if (!phone) return null;
-
-  // הסרת כל התווים שאינם מספרים
   const cleaned = phone.replace(/\D/g, "");
-
-  // טלפון ישראלי שמתחיל ב-05
-  if (cleaned.match(/^05\d{8}$/)) {
-    return `+972${cleaned.slice(1)}`;
-  }
-
-  // טלפון ישראלי עם קידומת 972
-  if (cleaned.match(/^9725\d{8}$/)) {
-    return `+${cleaned}`;
-  }
-
-  // טלפון בינלאומי עם +
-  if (cleaned.match(/^\d{10,15}$/)) {
-    return `+${cleaned}`;
-  }
-
+  if (/^05\d{8}$/.test(cleaned)) return `+972${cleaned.slice(1)}`;
+  if (/^9725\d{8}$/.test(cleaned)) return `+${cleaned}`;
+  if (/^\d{10,15}$/.test(cleaned)) return `+${cleaned}`;
   return null;
 }
 
@@ -42,12 +27,14 @@ function extractCartDetails(cartData: any) {
   const shippingAddress = cartData.shipping_address || {};
   const customer = cartData.customer || {};
 
-  const phone =
-    shippingAddress.phone ||
+  // Prioritize billing phone, then shipping, then customer, then cartData.phone
+  const rawPhone =
     billingAddress.phone ||
+    shippingAddress.phone ||
     customer.phone ||
     cartData.phone ||
     null;
+  const formattedPhone = rawPhone ? formatIsraeliPhoneNumber(rawPhone) : null;
 
   const items = (cartData.line_items || []).map((item: any) => ({
     name: item.title || item.name || "",
@@ -65,13 +52,10 @@ function extractCartDetails(cartData: any) {
     abandonedAt: cartData.updated_at || new Date().toISOString(),
     customer: {
       email: cartData.email || customer.email || "",
-      phone: phone,
-      name: `${shippingAddress.first_name || billingAddress.first_name || customer.first_name || ""} ${
-        shippingAddress.last_name ||
-        billingAddress.last_name ||
-        customer.last_name ||
-        ""
-      }`.trim(),
+      phone: formattedPhone || "",
+      name: `${billingAddress.first_name || ""} ${billingAddress.last_name || ""}`.trim() ||
+            `${shippingAddress.first_name || ""} ${shippingAddress.last_name || ""}`.trim() ||
+            customer.name || "",
       customer_id: customer.id || null,
     },
     billing_address: {
@@ -104,7 +88,6 @@ function extractCartDetails(cartData: any) {
 export const action = async ({ request }: ActionFunctionArgs) => {
   console.log("🛒 carts/create webhook received");
 
-  // אימות HMAC
   const rawBody = await request.clone().text();
   const shopifyHmac = request.headers.get("X-Shopify-Hmac-Sha256") || "";
   const computedHmac = crypto
@@ -112,12 +95,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     .update(rawBody, "utf8")
     .digest("base64");
 
-  const valid = crypto.timingSafeEqual(
-    Buffer.from(computedHmac),
-    Buffer.from(shopifyHmac),
-  );
-
-  if (!valid) {
+  if (!crypto.timingSafeEqual(Buffer.from(computedHmac), Buffer.from(shopifyHmac))) {
     console.warn("❌ carts/create — invalid HMAC");
     return new Response("Unauthorized", { status: 401 });
   }
@@ -130,30 +108,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const cartData = extractCartDetails(payload);
     const settingsRef = db.collection("whatsapp-settings").doc(instanceId);
 
-    // 1. שמירת עגלה נטושה בקולקציה pendingCheckouts (להתאמה עם השירות הקיים)
+    // 1. Save pending checkout with normalized phone
     await settingsRef
       .collection("pendingCheckouts")
       .doc(String(payload.id))
       .set({
-        status: "pending", // חשוב עבור השאילתה הקיימת
-        phone: cartData.customer.phone || "",
-        email: cartData.customer.email || "",
+        status: "pending",
+        phone: cartData.customer.phone,
+        email: cartData.customer.email,
         cartToken: cartData.cartToken,
         customerName: cartData.customer.name,
-        items: cartData.items.map(
-          (item: { name: any; quantity: any; price: any }) => ({
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-          }),
-        ),
+        items: cartData.items.map((i: any) => ({
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+        })),
         totalPrice: cartData.totals.total,
         abandoned_checkout_url: cartData.abandoned_checkout_url,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-    // 2. שמירת עגלה נטושה בקולקציה order_abandoned (לשמירת כל הנתונים המלאים)
+    // 2. Save full cart data
     await settingsRef
       .collection("order_abandoned")
       .doc(String(payload.id))
@@ -162,30 +138,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         createdAt: FieldValue.serverTimestamp(),
       });
 
-    // 3. שמירת/עדכון לקוח נטוש
-    const formattedPhone = cartData.customer.phone
-      ? formatIsraeliPhoneNumber(cartData.customer.phone)
-      : null;
-
-    if (formattedPhone) {
+    // 3. Update abandoned customer record
+    if (cartData.customer.phone) {
       const customerData = {
         ...cartData.customer,
-        phone: formattedPhone,
         lastAbandonedAt: FieldValue.serverTimestamp(),
         abandonedCartIds: FieldValue.arrayUnion(payload.id),
         address: {
-          street:
-            cartData.shipping_address.street ||
-            cartData.billing_address.street ||
-            "",
-          city:
-            cartData.shipping_address.city ||
-            cartData.billing_address.city ||
-            "",
-          postalCode:
-            cartData.shipping_address.postalCode ||
-            cartData.billing_address.postalCode ||
-            "",
+          street: cartData.shipping_address.street || cartData.billing_address.street || "",
+          city: cartData.shipping_address.city || cartData.billing_address.city || "",
+          postalCode: cartData.shipping_address.postalCode || cartData.billing_address.postalCode || "",
         },
         totalAbandoned: FieldValue.increment(1),
         createdAt: FieldValue.serverTimestamp(),
@@ -194,7 +156,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       await settingsRef
         .collection("abandoned_customers")
-        .doc(formattedPhone)
+        .doc(cartData.customer.phone)
         .set(customerData, { merge: true });
     }
 
