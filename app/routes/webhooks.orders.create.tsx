@@ -255,6 +255,22 @@ export const action: ActionFunction = async ({ request }) => {
     return new Response("Error writing to database", { status: 500 });
   }
 
+    // 4.a Clear matching abandoned carts
+  try {
+    console.log("🔍 Clearing abandoned carts matching this order...");
+    const abandonedRef = settingsRef.collection("abandoned_carte_end");
+    const [byEmail, byPhone] = await Promise.all([
+      abandonedRef.where("buyer.email", "==", shippingData.buyer.email || "").get(),
+      abandonedRef.where("buyer.phone", "==", shippingData.shipping.recipient.phone || "").get(),
+    ]);
+    for (const doc of [...byEmail.docs, ...byPhone.docs]) {
+      console.log(`   🗑️ Deleting abandoned cart ${doc.id}`);
+      await doc.ref.delete();
+    }
+  } catch (err) {
+    console.error("🔥 Error clearing abandoned carts:", err);
+  }
+
   // 5. בדיקת הגדרות ושליחת הודעת אישור אם צריך
   try {
     console.log("🔍 Checking settings for order_approved logic");
