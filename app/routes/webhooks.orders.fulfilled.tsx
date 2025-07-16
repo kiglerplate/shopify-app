@@ -60,49 +60,46 @@ console.log("settings     ", settings);
       orderData.orderNumber   && `מספר הזמנה: ${orderData.orderNumber}`
     ].filter(Boolean).join("\n");
 
-    const ifIsScheduled = settings.order_Scheduled_ship_tracking || 0; //שדה שמגדיר את הדקוות
+const data: any = {
+  clientId:        instanceId,
+  number:          formattedPhone,
+  message:         trackingMessage,
+  transactionType: "shipment_tracking",
+  orderNumber:     orderData.orderNumber,
+  createdAt:       FieldValue.serverTimestamp(),
+  sent:            false,
+};
 
-              if( ifIsScheduled !== 0) {
-    const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
-    
-    const sendAfter = Timestamp.fromDate(
-      new Date(Date.now() + delayInMinutes * 60 * 1000)
-    );
-    
-         await db
-     .collection("transactions")
-          .doc("scheduled-messages")
-          .collection("order-shipped")
-      .add({
-        clientId:         instanceId,
-        number:           formattedPhone,
-        message:          trackingMessage,
-        transactionType:  "shipment_tracking",
-        trackingNumber:   payload.tracking_number,
-        trackingUrl:      payload.tracking_url,
-        orderNumber:      orderData.orderNumber,
-        createdAt: FieldValue.serverTimestamp(),
-        sendAfter: sendAfter,
-        sent: false,
-      });
-     
-    }else{
-    
-    await db
-      .collection("transactions")
-      .doc("incomingOrders")
-      .collection("records")
-      .add({
-        clientId:         instanceId,
-        number:           formattedPhone,
-        message:          trackingMessage,
-        transactionType:  "shipment_tracking",
-        trackingNumber:   payload.tracking_number,
-        trackingUrl:      payload.tracking_url,
-        orderNumber:      orderData.orderNumber,
-        createdAt:        FieldValue.serverTimestamp(),
-      });
-    }
+if (payload.tracking_number) {
+  data.trackingNumber = payload.tracking_number;
+}
+if (payload.tracking_url) {
+  data.trackingUrl = payload.tracking_url;
+}
+
+const ifIsScheduled = settings.order_Scheduled_ship_tracking || 0;
+
+if (ifIsScheduled !== 0) {
+  const delayInMinutes = Number(ifIsScheduled);
+  const sendAfter = Timestamp.fromDate(
+    new Date(Date.now() + delayInMinutes * 60 * 1000)
+  );
+  data.sendAfter = sendAfter;
+
+  await db
+    .collection("transactions")
+    .doc("scheduled-messages")
+    .collection("order-shipped")
+    .add(data);
+
+} else {
+  await db
+    .collection("transactions")
+    .doc("incomingOrders")
+    .collection("records")
+    .add(data);
+}
+
     
   }
   export const action: ActionFunction = async ({ request }) => {
