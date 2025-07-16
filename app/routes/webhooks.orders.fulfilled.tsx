@@ -2,7 +2,7 @@
   import type { ActionFunction } from "@remix-run/node";
   import { json } from "@remix-run/node";
   import crypto from "crypto";
-  import { db, FieldValue } from "../firebase.server";
+  import { db, FieldValue, Timestamp } from "../firebase.server";
   import type { DocumentReference } from "firebase-admin/firestore";
   const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
 
@@ -53,6 +53,34 @@
       orderData.orderNumber   && `מספר הזמנה: ${orderData.orderNumber}`
     ].filter(Boolean).join("\n");
 
+    const ifIsScheduled = settings.order_Scheduled_fulfulfill || 0; //שדה שמגדיר את הדקוות
+
+              if( ifIsScheduled !== 0) {
+    const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
+    
+    const sendAfter = Timestamp.fromDate(
+      new Date(Date.now() + delayInMinutes * 60 * 1000)
+    );
+    
+         await db
+     .collection("transactions")
+          .doc("scheduled-messages")
+          .collection("order-shipped")
+      .add({
+        clientId:         instanceId,
+        number:           formattedPhone,
+        message:          trackingMessage,
+        transactionType:  "shipment_tracking",
+        trackingNumber:   payload.tracking_number,
+        trackingUrl:      payload.tracking_url,
+        orderNumber:      orderData.orderNumber,
+        createdAt: FieldValue.serverTimestamp(),
+        sendAfter: sendAfter,
+        sent: false,
+      });
+     
+    }else{
+    
     await db
       .collection("transactions")
       .doc("incomingOrders")
@@ -67,8 +95,9 @@
         orderNumber:      orderData.orderNumber,
         createdAt:        FieldValue.serverTimestamp(),
       });
+    }
+    
   }
-
   export const action: ActionFunction = async ({ request }) => {
     // 1. HMAC validation
     const rawBody   = await request.clone().text();

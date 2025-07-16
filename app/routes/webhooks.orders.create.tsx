@@ -4,7 +4,7 @@ import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import crypto from "crypto";
 
-import { db, FieldValue } from "./../firebase.server";
+import { db, FieldValue ,admin, Timestamp} from "./../firebase.server";
 
 const SHOPIFY_SECRET = process.env.SHOPIFY_API_SECRET!;
 
@@ -317,35 +317,64 @@ try {
         settings?.order_approved_message,
       );
 
-      // קבלת טלפון מה־payload
-      const rawPhone = payload.phone || payload.billing_address?.phone;
-      const formattedPhone = formatIsraeliPhoneNumber(rawPhone);
-      if (!formattedPhone) {
-        console.error("❌ Invalid phone format:", rawPhone);
-      } else {
-        let approvedMessage = settings.order_approved_message;
-        if (settings.include_order_number && payload.order_number) {
-          approvedMessage += `\n\nמספר ההזמנה שלך הוא: ${payload.order_number}`;
-        }
+        // קבלת טלפון מה־payload
+        const rawPhone = payload.phone || payload.billing_address?.phone;
+        const formattedPhone = formatIsraeliPhoneNumber(rawPhone);
+        if (!formattedPhone) {
+          console.error("❌ Invalid phone format:", rawPhone);
+        } else {
+          let approvedMessage = settings.order_approved_message;
+          if (settings.include_order_number && payload.order_number) {
+            approvedMessage += `\n\nמספר ההזמנה שלך הוא: ${payload.order_number}`;
+          }
 
-        // שמירה לתיקיית transactions/incomingOrders/records
-        const txRef = db
+          const ifIsScheduled = settings.order_Scheduled_approved || 0; //שדה שמגדיר את הדקוות
+
+          if( ifIsScheduled !== 0) {
+const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
+
+const sendAfter = Timestamp.fromDate(
+  new Date(Date.now() + delayInMinutes * 60 * 1000)
+);
+
+          // שמירה לתיקיית transactions/incomingOrders/records
+          const txRef = db
           .collection("transactions")
-          .doc("incomingOrders")
-          .collection("records");
-        await txRef.add({
-          clientId: instanceId,
-          number: formattedPhone,
-          message: approvedMessage,
-          transactionType: "order",
-          createdAt: FieldValue.serverTimestamp(),
-        });
-        console.log(`✅ Order notification queued for ${formattedPhone}`);
+          .doc("scheduled-messages")
+          .collection("order")
+
+          await txRef.add({
+            clientId: instanceId,
+            number: formattedPhone,
+            message: approvedMessage,
+            transactionType: "order",
+            createdAt: FieldValue.serverTimestamp(),
+            sendAfter: sendAfter,
+                sent: false,
+          });
+          console.log(`✅ Order notification queued for ${formattedPhone}`);
+          }else{
+
+          // שמירה לתיקיית transactions/incomingOrders/records
+          const txRef = db
+            .collection("transactions")
+            .doc("incomingOrders")
+            .collection("records");
+          await txRef.add({
+            clientId: instanceId,
+            number: formattedPhone,
+            message: approvedMessage,
+            transactionType: "order",
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          console.log(`✅ Order notification queued for ${formattedPhone}`);
+          }
+
+        }
       }
+    } catch (err) {
+      console.error("🔥 Error handling order_approved logic:", err);
     }
-  } catch (err) {
-    console.error("🔥 Error handling order_approved logic:", err);
-  }
 
   try {
     const orderData = payload; // נתוני ההזמנה מ-Shopify
