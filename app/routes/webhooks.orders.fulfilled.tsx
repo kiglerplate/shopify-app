@@ -53,7 +53,7 @@
       orderData.orderNumber   && `מספר הזמנה: ${orderData.orderNumber}`
     ].filter(Boolean).join("\n");
 
-    const ifIsScheduled = settings.order_Scheduled_fulfulfill || 0; //שדה שמגדיר את הדקוות
+    const ifIsScheduled = settings.order_Scheduled_ship_tracking || 0; //שדה שמגדיר את הדקוות
 
               if( ifIsScheduled !== 0) {
     const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
