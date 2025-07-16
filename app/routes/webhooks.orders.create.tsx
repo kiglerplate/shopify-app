@@ -264,8 +264,8 @@ export const action: ActionFunction = async ({ request }) => {
       console.log("🔍 Clearing abandoned carts matching this order...",shippingData.buyer.email);
       const abandonedRef = settingsRef.collection("abandoned_carte_end");
       const [byEmail, byPhone] = await Promise.all([
-        abandonedRef.where("buyer.email", "==", shippingData.buyer.email || "").get(),
-        abandonedRef.where("buyer.phone", "==", shippingData.shipping.recipient.phone || "").get(),
+        abandonedRef.where("email", "==", shippingData.buyer.email || "").get(),
+        abandonedRef.where("phone", "==", shippingData.shipping.recipient.phone || "").get(),
       ]);
       for (const doc of [...byEmail.docs, ...byPhone.docs]) {
         console.log(`   🗑️ Deleting abandoned cart ${doc.id}`);
