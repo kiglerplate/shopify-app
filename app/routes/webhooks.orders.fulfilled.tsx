@@ -34,10 +34,17 @@
   }) {
     const settingsSnap = await settingsRef.get();
     const settings = settingsSnap.data();
+console.log("settings     ", settings);
+    if (!settings) {
+      console.error("❌ No settings found for instance:", instanceId);
+      return;
+    }
 
+      console .log("settings.ship_orders1", payload);
     if (!settings?.ship_orders1 ||
-        !settings?.ship_tracking_message1 ||
-        !payload.tracking_url
+        !settings?.ship_tracking_message1
+        //  ||
+        // !payload.tracking_url
     ) {
       return;
     }
@@ -112,7 +119,7 @@
   const payload = JSON.parse(rawBody);
 
 
-    const orderId       = String(payload.id ?? payload.order_id);
+    const orderId = String(payload.id ?? payload.order_id);
 
   const fulfillmentObj =
     payload.fulfillment
