@@ -77,28 +77,28 @@ if (payload.tracking_url) {
   data.trackingUrl = payload.tracking_url;
 }
 
-const ifIsScheduled = settings.order_Scheduled_ship_tracking || 0;
+// const ifIsScheduled = settings.order_Scheduled_ship_tracking || 0;
 
-if (ifIsScheduled !== 0) {
-  const delayInMinutes = Number(ifIsScheduled);
-  const sendAfter = Timestamp.fromDate(
-    new Date(Date.now() + delayInMinutes * 60 * 1000)
-  );
-  data.sendAfter = sendAfter;
+// if (ifIsScheduled !== 0) {
+//   // const delayInMinutes = Number(ifIsScheduled);
+//   // const sendAfter = Timestamp.fromDate(
+//   //   new Date(Date.now() + delayInMinutes * 60 * 1000)
+//   // );
+//   // data.sendAfter = sendAfter;
 
-  await db
-    .collection("transactions")
-    .doc("scheduled-messages")
-    .collection("order-shipped")
-    .add(data);
+//   await db
+//     .collection("transactions")
+//     .doc("scheduled-messages")
+//     .collection("order-shipped")
+//     .add(data);
 
-} else {
-  await db
-    .collection("transactions")
-    .doc("incomingOrders")
-    .collection("records")
-    .add(data);
-}
+// } else {
+//   await db
+//     .collection("transactions")
+//     .doc("incomingOrders")
+//     .collection("records")
+//     .add(data);
+// }
 
     
   }

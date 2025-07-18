@@ -328,14 +328,14 @@ try {
             approvedMessage += `\n\nמספר ההזמנה שלך הוא: ${payload.order_number}`;
           }
 
-          const ifIsScheduled = settings.order_Scheduled_approved || 0; //שדה שמגדיר את הדקוות
+          // const ifIsScheduled = settings.order_Scheduled_approved || 0; //שדה שמגדיר את הדקוות
 
-          if( ifIsScheduled !== 0) {
-const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
+          // if( ifIsScheduled !== 0) {
+// const delayInMinutes = Number(ifIsScheduled); // נוודא שזה מספר
 
-const sendAfter = Timestamp.fromDate(
-  new Date(Date.now() + delayInMinutes * 60 * 1000)
-);
+// const sendAfter = Timestamp.fromDate(
+//   new Date(Date.now() + delayInMinutes * 60 * 1000)
+// );
 
           // שמירה לתיקיית transactions/incomingOrders/records
           const txRef = db
@@ -349,26 +349,26 @@ const sendAfter = Timestamp.fromDate(
             message: approvedMessage,
             transactionType: "order",
             createdAt: FieldValue.serverTimestamp(),
-            sendAfter: sendAfter,
-                sent: false,
+            // sendAfter: sendAfter,
+                // sent: false,
           });
           console.log(`✅ Order notification queued for ${formattedPhone}`);
-          }else{
+          // }else{
 
           // שמירה לתיקיית transactions/incomingOrders/records
-          const txRef = db
-            .collection("transactions")
-            .doc("incomingOrders")
-            .collection("records");
-          await txRef.add({
-            clientId: instanceId,
-            number: formattedPhone,
-            message: approvedMessage,
-            transactionType: "order",
-            createdAt: FieldValue.serverTimestamp(),
-          });
-          console.log(`✅ Order notification queued for ${formattedPhone}`);
-          }
+          // const txRef = db
+            // .collection("transactions")
+            // .doc("incomingOrders")
+            // .collection("records");
+          // await txRef.add({
+            // clientId: instanceId,
+            // number: formattedPhone,
+            // message: approvedMessage,
+            // transactionType: "order",
+            // createdAt: FieldValue.serverTimestamp(),
+          // });
+          // console.log(`✅ Order notification queued for ${formattedPhone}`);
+          // }
 
         }
       }
