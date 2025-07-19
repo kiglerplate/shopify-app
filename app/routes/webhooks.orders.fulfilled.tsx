@@ -199,7 +199,8 @@ if (status != null) f.status = status;
     fulfillment: f,
     lastUpdated: FieldValue.serverTimestamp(),
     shipmentAlreadyCreated: true, // נניח שלא נוצרה עדיין שליחה
-    statusCode: 0
+    statusCode: 0,
+    instanceId: instanceId,
 
   };
 

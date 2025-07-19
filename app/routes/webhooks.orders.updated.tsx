@@ -55,16 +55,16 @@ export const action: ActionFunction = async ({ request }) => {
     }
     const data = activeSnap.data();
 
-    // 6. Move document back to shipping-records
-    const batch = db.batch();
-    // write to records
-    batch.set(recordsRef.doc(orderId), {
-      ...data,
-      lastUpdated: FieldValue.serverTimestamp(),
-    });
-    // delete from active
-    batch.delete(activeRef.doc(orderId));
-    await batch.commit();
+    // // 6. Move document back to shipping-records
+    // const batch = db.batch();
+    // // write to records
+    // batch.set(recordsRef.doc(orderId), {
+    //   ...data,
+    //   lastUpdated: FieldValue.serverTimestamp(),
+    // });
+    // // delete from active
+    // batch.delete(activeRef.doc(orderId));
+    // await batch.commit();
 
     console.log(`↩️  Moved order ${orderId} from shipping-active back to shipping-records`);
     return json({ success: true }, { status: 200 });
