@@ -198,6 +198,7 @@ if (status != null) f.status = status;
     ...orderData,
     fulfillment: f,
     lastUpdated: FieldValue.serverTimestamp(),
+    shipmentAlreadyCreated: true, // נניח שלא נוצרה עדיין שליחה
   };
 
 
