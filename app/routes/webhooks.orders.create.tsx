@@ -351,7 +351,9 @@ try {
             createdAt: FieldValue.serverTimestamp(),
             // sendAfter: sendAfter,
             sent: false,
-            statusCode: 0
+            statusCode: 0,
+            instanceId: instanceId,
+
           });
           console.log(`✅ Order notification queued for ${formattedPhone}`);
           // }else{
