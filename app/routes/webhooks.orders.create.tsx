@@ -350,7 +350,7 @@ try {
             transactionType: "order",
             createdAt: FieldValue.serverTimestamp(),
             // sendAfter: sendAfter,
-                // sent: false,
+            sent: false,
           });
           console.log(`✅ Order notification queued for ${formattedPhone}`);
           // }else{
