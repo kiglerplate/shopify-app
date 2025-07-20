@@ -4,9 +4,7 @@ import { useFetcher } from "@remix-run/react";
 import { auth, db } from "../firebaseClient";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { useLoaderData } from "@remix-run/react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-
-
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import {
   Page,
   Layout,
@@ -27,13 +25,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { shopId: session.shop };
 };
 
+function normalizeId(raw: string): string {
+  return (
+    raw
+      .toLowerCase()
+      // כל רצף של תווים שאינם a–z או 0–9 יהפוך ל־'-'
+      .replace(/[^a-z0-9]+/g, "-")
+      // מסיר '-' מיותר בהתחלה ובסוף
+      .replace(/^-+|-+$/g, "")
+  );
+}
+
 const handleGoogleSignIn = async (shopId: string) => {
   try {
+    const instanceId = normalizeId(shopId); // => "sisfore-myshopify-com"
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
-    const user = result.user;
+    const user = result.user!;
+    if (!user.email) throw new Error("User email is null");
 
-    const userDocRef = doc(db, "users", user.email ?? "unknown-email");
+    // users collection – נשמור כרגיל תחת המייל שלו
+    const userDocRef = doc(db, "users", user.email);
     const existing = await getDoc(userDocRef);
 
     if (!existing.exists()) {
@@ -42,45 +54,50 @@ const handleGoogleSignIn = async (shopId: string) => {
         displayName: user.displayName,
         photoURL: user.photoURL,
         platform: "shopify",
-        shopId: shopId,
+        instances: [instanceId],
         createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString()
+        lastLogin: new Date().toISOString(),
+        isReady: false,
+        requestNewQR: false,
       });
     } else {
-      const userData = existing.data();
-      await setDoc(userDocRef, {
-        ...userData,
-        shopId: shopId,
-        lastLogin: new Date().toISOString(),
+      await updateDoc(userDocRef, {
+        instances: arrayUnion(instanceId),
         displayName: user.displayName,
-        photoURL: user.photoURL
+        photoURL: user.photoURL,
+        lastLogin: new Date().toISOString(),
+        isReady: false,
+        requestNewQR: false,
       });
     }
 
-    const whatsappSettingsRef = doc(db, "whatsapp-settings", shopId);
+    // whatsapp-settings collection – תוודא שמזהה המסמך הוא instanceId, לא shopId
+    const whatsappSettingsRef = doc(db, "whatsapp-settings", instanceId);
     const whatsappSettingsSnap = await getDoc(whatsappSettingsRef);
 
     if (!whatsappSettingsSnap.exists()) {
       await setDoc(whatsappSettingsRef, {
-        shopId: shopId,
+        shopDomain: shopId, // אם חשוב לשמור גם את הדומיין המקורי
         userId: user.uid,
         email: user.email,
         phone: "",
         isActive: false,
         platform: "shopify",
+        instances: [instanceId],
         createdAt: new Date().toISOString(),
+      });
+    } else {
+      await updateDoc(whatsappSettingsRef, {
+        instances: arrayUnion(instanceId),
       });
     }
 
-    alert(`🎉 התחברת בהצלחה: ${user.displayName} לחנות ${shopId}`);
+    alert(`🎉 התחברת בהצלחה: ${user.displayName} לחנות ${instanceId}`);
   } catch (error) {
     console.error("❌ שגיאה בהתחברות:", error);
     alert("שגיאה בהתחברות עם Google");
   }
 };
-
-
-
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
@@ -153,7 +170,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function Index() {
   const fetcher = useFetcher<typeof action>();
-const { shopId } = useLoaderData<typeof loader>();
+  const { shopId } = useLoaderData<typeof loader>();
 
   const shopify = useAppBridge();
   const isLoading =
@@ -173,24 +190,25 @@ const { shopId } = useLoaderData<typeof loader>();
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
+      {/* <TitleBar title="Remix app template">
         <button variant="primary" onClick={generateProduct}>
           Generate a product
         </button>
-      </TitleBar>
+      </TitleBar> */}
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
             <Card>
               <BlockStack gap="500">
-<Button onClick={() => handleGoogleSignIn(shopId)} variant="secondary">
-  Sign in with Google
-</Button>
-
+                <Button
+                  onClick={() => handleGoogleSignIn(shopId)}
+                  variant="secondary"
+                >
+                  Sign in with Google11
+                </Button>
               </BlockStack>
             </Card>
           </Layout.Section>
-     
         </Layout>
       </BlockStack>
     </Page>
