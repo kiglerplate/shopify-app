@@ -306,12 +306,7 @@ try {
     console.log("🔍 Checking settings for order_approved logic");
     const settingsSnap = await settingsRef.get();
     const settings = settingsSnap.data();
-    if (settings?.order_approved && settings?.order_approved_message) {
-      console.log("✅ order_approved is enabled, preparing message");
-      console.log(
-        "🔍 Checking settings for order_approved logic",
-        settings?.order_approved,
-      );
+    if (settings?.order_approved_message) {
       console.log(
         "🔍 Checking settings for order_approved logic",
         settings?.order_approved_message,
