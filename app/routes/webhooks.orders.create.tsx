@@ -351,6 +351,7 @@ try {
             createdAt: FieldValue.serverTimestamp(),
             // sendAfter: sendAfter,
             sent: false,
+            triggerField :"order",
             statusCode: 0,
             instanceId: instanceId,
 
