@@ -196,7 +196,7 @@ async function saveErrorToFirestore(
     timestamp: FieldValue.serverTimestamp(),
   });
 }
-export const action: ActionFunction = async ({ request }: { request: Request }) => {
+export const action: ActionFunction = async ({ request }) => {
   console.log("🚀 orders.create webhook received");
 
   // 1. אימות HMAC
@@ -306,18 +306,24 @@ try {
     console.log("🔍 Checking settings for order_approved logic");
     const settingsSnap = await settingsRef.get();
     const settings = settingsSnap.data();
-    const orderSettings = settings?.messagingControls?.order;
-
-   if (orderSettings?.enabled && orderSettings?.message) {
+    if (settings?.order_approved && settings?.order_approved_message) {
+      console.log("✅ order_approved is enabled, preparing message");
+      console.log(
+        "🔍 Checking settings for order_approved logic",
+        settings?.order_approved,
+      );
+      console.log(
+        "🔍 Checking settings for order_approved logic",
+        settings?.order_approved_message,
+      );
 
         // קבלת טלפון מה־payload
         const rawPhone = payload.phone || payload.billing_address?.phone;
         const formattedPhone = formatIsraeliPhoneNumber(rawPhone);
-       
         if (!formattedPhone) {
           console.error("❌ Invalid phone format:", rawPhone);
         } else {
-          let approvedMessage = orderSettings.message;
+          let approvedMessage = settings.order_approved_message;
           if (settings.include_order_number && payload.order_number) {
             approvedMessage += `\n\nמספר ההזמנה שלך הוא: ${payload.order_number}`;
           }
@@ -345,9 +351,9 @@ try {
             createdAt: FieldValue.serverTimestamp(),
             // sendAfter: sendAfter,
             sent: false,
-            triggerField :"order",
             statusCode: 0,
             instanceId: instanceId,
+            triggerField: "order",
 
           });
           console.log(`✅ Order notification queued for ${formattedPhone}`);
