@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "ac45b68fad2c2a395bc9b57cb191df60"
-name = "WarmLight"
-handle = "65-1"
+client_id = "08bef66432be6db760de3a6b85baf419"
+name = "Custom_warmlight_2"
+handle = "08bef66432be6db760de3a6b85baf419"
 application_url = "https://warmlight.xyz"
 embedded = true
 
