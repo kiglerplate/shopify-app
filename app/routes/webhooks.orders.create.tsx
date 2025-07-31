@@ -114,7 +114,7 @@ function extractShippingDetails(orderData: {
     fulfillmentStatus: (
       orderData.fulfillment_status || "UNFULFILLED"
     ).toUpperCase(),
-    shippingType: requiresShipping ? "DELIVERY" : "UNKNOWN",
+    shippingType: requiresShipping ? "DELIVERY" : "PICKUP",
     createdAt: FieldValue.serverTimestamp(),
 
     shipping: {
@@ -419,6 +419,8 @@ try {
       orderId: orderData.id,
       orderNumber: orderData.order_number,
     });
+    
+    console.log("📦 Extracting shipping details from order:", orderData);
 
     const shippingData = extractShippingDetails(orderData);
     // console.log("📤 Prepared shipping data to be saved:", shippingData);
