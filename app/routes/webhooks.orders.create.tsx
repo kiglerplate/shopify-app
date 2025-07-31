@@ -275,7 +275,6 @@ export const action: ActionFunction = async ({ request }: { request: Request }) 
       console.error("🔥 Error clearing abandoned carts:", err);
     }
 
-    // 4.b Clear matching pending checkouts
 try {
   console.log("🔍 Clearing pending checkouts matching this order...", shippingData.shipping.recipient.phone);
   console.log("🔍 Clearing pending checkouts matching this order...", shippingData.buyer.email);
@@ -300,7 +299,40 @@ try {
   console.error("🔥 Error clearing pending checkouts:", err);
 }
 
+try {
+  console.log("🔍 Clearing scheduled abandoned cart messages matching this order...", shippingData.shipping.recipient.phone);
+  console.log("🔍 Clearing scheduled abandoned cart messages matching this order...", shippingData.buyer.email);
 
+  // טיפול במספר טלפון - מסיר + אם קיים
+  const normalizePhone = (phone: string | null) => {
+    if (!phone) return null;
+    return phone.replace(/^\+/, '');
+  };
+
+  const phoneToCheck = normalizePhone(shippingData.shipping.recipient.phone);
+  const emailToCheck = shippingData.buyer.email || '';
+
+  const scheduledAbandonedRef = db.collection("transactions")
+    .doc("scheduled-messages")
+    .collection("abandoned");
+
+  const [byEmail, byPhone] = await Promise.all([
+    emailToCheck ? scheduledAbandonedRef.where("number", "==", emailToCheck).get() : Promise.resolve({ docs: [] }),
+    phoneToCheck ? scheduledAbandonedRef.where("number", "==", phoneToCheck).get() : Promise.resolve({ docs: [] }),
+  ]);
+
+  const uniqueScheduledDocs = new Map();
+  [...byEmail.docs, ...byPhone.docs].forEach((doc) => {
+    uniqueScheduledDocs.set(doc.id, doc);
+  });
+
+  for (const doc of uniqueScheduledDocs.values()) {
+    console.log(`   🗑️ Deleting scheduled abandoned cart message ${doc.id}`);
+    await doc.ref.delete();
+  }
+} catch (err) {
+  console.error("🔥 Error clearing scheduled abandoned cart messages:", err);
+}
   // 5. בדיקת הגדרות ושליחת הודעת אישור אם צריך
   try {
     console.log("🔍 Checking settings for order_approved logic");
